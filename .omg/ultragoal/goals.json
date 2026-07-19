@@ -1,0 +1,50 @@
+[
+  {
+    "id": "G1",
+    "description": "Initialize Isolated Production Directory: Create the gcp/ folder at the project root to guarantee that no local files are modified.",
+    "status": "in-progress",
+    "verification_criteria": "The folder gcp/ exists at the root, and all subsequent work is restricted to this folder."
+  },
+  {
+    "id": "G2",
+    "description": "Create Production package.json: Write gcp/package.json declaring pg and other production dependencies to prevent local npm installs.",
+    "status": "todo",
+    "verification_criteria": "gcp/package.json is created. The root package.json is left completely untouched."
+  },
+  {
+    "id": "G3",
+    "description": "Create Postgres Database Client: Write gcp/postgres-store.ts implementing all database methods (tickers, signals, predictions) using pg.",
+    "status": "todo",
+    "verification_criteria": "gcp/postgres-store.ts is created and does not import or modify src/store/db.ts."
+  },
+  {
+    "id": "G4",
+    "description": "Create Production Server: Write gcp/server.ts to import the original createApp and dynamically hook JWT auth to rest routes.",
+    "status": "todo",
+    "verification_criteria": "gcp/server.ts imports src/api/fastify/app.ts and registers a preHandler authenticate hook dynamically."
+  },
+  {
+    "id": "G5",
+    "description": "Implement Production WebSocket Security: Integrate connection authentication checks within gcp/server.ts or ws wrappers.",
+    "status": "todo",
+    "verification_criteria": "WebSocket handshakes verify tokens using the existing configuration, without editing src/api/ws.ts."
+  },
+  {
+    "id": "G6",
+    "description": "Write Production Dockerfile: Create gcp/Dockerfile to build the production image using Node, Python, and the gcp/ package.json.",
+    "status": "todo",
+    "verification_criteria": "gcp/Dockerfile is created and configured for Cloud Run deployment."
+  },
+  {
+    "id": "G7",
+    "description": "Verify Production Compilation: Run TypeScript compiler exclusively on the gcp/ files to check for syntax or import issues.",
+    "status": "todo",
+    "verification_criteria": "gcp/ files compile successfully without changing any tsconfig.json properties at the root."
+  },
+  {
+    "id": "G8",
+    "description": "Validate Unchanged Local Tests: Run the local vitest test suite to confirm the local SQLite development pipeline remains 100% green.",
+    "status": "todo",
+    "verification_criteria": "npm test passes successfully, proving the local pipeline has zero regression."
+  }
+]

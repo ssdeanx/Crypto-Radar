@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - run: npm test
+
+      - name: Create tarball
+        run: |
+          tar -czf hermes-crypto-radar-${{ github.ref_name }}.tar.gz \
+            --exclude=node_modules --exclude=dist --exclude=data \
+            --exclude=.git --exclude=.github --exclude=coverage \
+            .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: hermes-crypto-radar-*.tar.gz
+          body_path: CHANGELOG.md
+          generate_release_notes: true

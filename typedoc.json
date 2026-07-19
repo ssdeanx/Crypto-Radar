@@ -1,0 +1,29 @@
+{
+  "entryPoints": ["src/index.ts", "src/types.ts", "src/tokens.ts"],
+  "out": "docs/api",
+  "name": "Hermes Crypto Radar — API Reference",
+  "includeVersion": true,
+  "excludePrivate": true,
+  "excludeProtected": true,
+  "excludeExternals": true,
+  "theme": "default",
+  "readme": "SPEC.md",
+  "githubPages": true,
+  "validation": {
+    "notExported": true,
+    "invalidLink": true,
+    "notDocumented": true
+  },
+  "categorizeByGroup": true,
+  "sort": ["kind", "visibility", "alphabetical"],
+  "cleanOutputDir": true,
+  "sidebarLinks": {
+    "GitHub": "https://github.com/ssdeanx/Hermes-Crypto-Radar",
+    "npm": "https://www.npmjs.com/package/hermes-crypto-radar",
+    "Changelog": "https://github.com/ssdeanx/Hermes-Crypto-Radar/blob/main/CHANGELOG.md"
+  },
+  "navigationModel": {
+    "entryPointLabel": "Modules"
+  },
+  "searchInComments": true
+}

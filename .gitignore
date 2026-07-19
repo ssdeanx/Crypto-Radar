@@ -1,0 +1,52 @@
+node_modules/
+dist/
+coverage/
+
+*.csv
+*.jsonl
+*.txt
+*.xlsx
+*.db
+*.db-shm
+*.db-wal
+data/
+data/crypto-radar/*.jsonl
+data/crypto-radar/*.md
+data/crypto-radar/*.txt
+data/crypto-radar/*.csv
+data/crypto-radar/*.xlsx
+data/crypto-radar/*.db
+data/crypto-radar/*.db-shm
+data/crypto-radar/*.db-wal
+*.lock
+.omo/
+.vml/
+.ruff_cache/
+catboost_info/
+.husky/
+.kilo/
+.hermes/
+ml/__pycache__/
+ml/.pytest_cache/
+ml/models/
+ml/**/optuna_study.db
+.env
+dick-sucker-ai/Crypto-Radar/
+
+# Docs output
+docs/api/
+crypto-radar-state.json
+*.log
+*.tar.gz
+*.skill.md
+
+# Debug artifacts
+*.heapsnapshot
+
+# Git internals — never track worktrees
+.worktrees/
+
+# Stray lockfiles from other package managers
+pnpm-lock.yaml
+
+data/crypto-radar/crypto-radar.db

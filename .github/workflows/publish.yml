@@ -1,0 +1,26 @@
+name: Publish to Marketplace
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+      - name: Package for marketplace
+        run: bash scripts/publish.sh
+      - name: Upload tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketplace-package
+          path: hermes-crypto-radar-*.tar.gz

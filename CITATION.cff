@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+title: "Hermes Crypto Radar"
+message: "If you use this plugin, please cite it."
+type: software
+authors:
+  - family-names: "Sam"
+    given-names: ""
+    alias: "ssdeanx"
+repository-code: "https://github.com/ssdeanx/Hermes-Crypto-Radar"
+license: MIT
+version: 2.0.0

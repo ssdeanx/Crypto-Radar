@@ -1,0 +1,10 @@
+src/
+test/
+data/
+.eslintrc*
+eslint.config.*
+.prettierrc*
+tsconfig.json
+.git/
+.github/
+.husky/

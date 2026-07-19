@@ -1,0 +1,27 @@
+name: Nightly E2E
+
+on:
+  schedule:
+    - cron: '0 6 * * *'  # 6 AM UTC daily
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - run: npm run build
+
+      - name: Run E2E smoke tests
+        run: npx vitest run src/e2e.test.ts --reporter=verbose
+        timeout-minutes: 5
+
+      - name: Run benchmark
+        run: node dist/cli.js benchmark
