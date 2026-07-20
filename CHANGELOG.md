@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.6.0] — 2026-07-19
+
+### Added
+
+- **Google Cloud Run & Cloud Scheduler Automation** — Added automated cloud deployment capability. Secure hourly cron trigger endpoint `/api/cron/scan` defined in `src/api/fastify/routes/cron.ts` executes a full radar scan, data collection, and ML predictions cycle. Cloud Scheduler triggers the endpoint securely using OIDC tokens or a shared `x-cron-secret`. CORS options are made configurable on Fastify.
+- **Vertex AI Gemini 3.1 Pro Integration** (`src/analysis/gemini.ts`) — Integrated the `@google-cloud/vertexai` SDK to generate concise, professional market analysis and descriptive trading predictions based on recent klines, current prices, and technical signals, storing them directly under the `reasoning` field in the database.
+- **Automated Deployment Script** (`deploy.sh`) — Full-featured provisioning script enabling Artifact Registry creation, automated container build via Cloud Build, secure Cloud Run deployment, and automatic Cloud Scheduler cron creation/update.
+- **Debian-Based Dockerfile** (`Dockerfile`) — Replaced the alpine runtime image with `node:22-bookworm-slim` to cleanly resolve compiled C++ binaries and configure Python ML virtual environment via `uv` for drift detection.
+
+### Changed
+
+- **Asynchronous Data Store & Router Refactoring** (`src/store/db.ts`) — Refactored the core Data Layer to be fully asynchronous, utilizing Google Cloud BigQuery (`@google-cloud/bigquery`) with automatic fallback to an in-memory SQLite database when BigQuery is not available.
+- **Asynchronous Caller Wiring** — Refactored all data store callers across the codebase (CLI tasks, Daemon processes, collector functions, paper-trading endpoints, and REST routing) to cleanly handle asynchronous operations and await Store methods.
+
+### Fixed
+
+- **Store Closed State Handling** (`src/store/db.ts`) — Hardened the `stats` and `close` store methods to correctly raise errors when operations are executed on a closed store.
+- **Integration Test Sandboxing** (`src/cli.integration.test.ts`) — Configured CLI integration tests to use a local, writable test data directory to ensure success in environments lacking root-level write access to `/data/crypto-radar`.
+
 ## [2.4.0] — 2026-07-18
 
 ### Added
@@ -580,6 +599,8 @@ If you are upgrading from v2.3.x or earlier:
 
 ## [0.x] — Pre-release (not tracked)
 
+[2.6.0]: https://github.com/ssdeanx/Hermes-Crypto-Radar/releases/tag/v2.6.0
+[2.5.0]: https://github.com/ssdeanx/Hermes-Crypto-Radar/releases/tag/v2.5.0
 [2.4.0]: https://github.com/ssdeanx/Hermes-Crypto-Radar/releases/tag/v2.4.0
 [2.3.0]: https://github.com/ssdeanx/Hermes-Crypto-Radar/releases/tag/v2.3.0
 [2.2.0]: https://github.com/ssdeanx/Hermes-Crypto-Radar/releases/tag/v2.2.0

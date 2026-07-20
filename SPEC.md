@@ -1,7 +1,7 @@
 # 🛰️ Crypto Radar — Production Data Pipeline SPEC
 
 > **Project:** Multi-chain crypto market data collection pipeline  
-> **Status:** v2.4.0 · Production  (July 18, 2026)  
+> **Status:** v2.6.0 · Production  (July 19, 2026)  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
@@ -12,20 +12,22 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 
 **What it does in production:**
 
-1. **Periodic data collection** — A cron job runs every hour (or configurable interval), fetching live prices, technical indicators, news, futures data, and on-chain metrics for 49+ tracked tokens across 31 chains.
-2. **Persistent storage** — All collected data is written to a configurable data directory (`/data/crypto-radar/` by default) in multiple formats: CSV logs (append-only), JSONL datasets (ML-ready), SQLite database (structured queries), and human-readable reports (`.txt`, `.md`, `.xlsx`).
+1. **Periodic data collection** — A cron job runs every hour (or configurable interval), fetching live prices, technical indicators, news, futures data, and on-chain metrics for 85 tracked tokens across 35 chains.
+2. **Persistent storage** — All collected data is written to a configurable data directory (`/data/crypto-radar/` by default) in multiple formats: CSV logs (append-only), JSONL datasets (ML-ready), SQLite database (structured queries), BigQuery (async enterprise data lake), and human-readable reports (`.txt`, `.md`, `.xlsx`).
 3. **Signal computation** — A 3-strategy composite signal engine (Momentum 40%, Mean Reversion 20%, Trend Following 40%) produces buy/sell/neutral signals with confidence scores.
-4. **ML predictions** — Optional CatBoost-based direction classifier with auto-retrain, concept drift detection, and batch inference.
-5. **API serving** — A warm daemon exposes a REST API (Fastify, port 9877) and WebSocket streams (port 9878) for querying collected data.
+4. **ML predictions** — Optional CatBoost-based direction classifier with auto-retrain, concept drift detection, batch inference, and Gemini 3.1 Pro reasoning enrichment.
+5. **API serving** — A warm daemon exposes a REST API (Fastify, port 9877) and WebSocket streams (port 9878) for querying collected data. Fastify is the sole API implementation.
 6. **Data retention** — Monthly archive compression, configurable log pruning (default 30 days), SHA-256 checksum verification on all log files.
 
 **Key design tenets:**
 
 1. **Cron-first** — The primary production path is `scripts/crypto-radar-collector.sh` driven by system cron. All output formats are automatically saved to the data directory.
-2. **Multi-chain** — 31 chains: Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta + broader market.
+2. **Multi-chain** — 35 chains: Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta, Dash, NEO, Internet Computer, Ethereum Classic + broader market.
 3. **No API keys required** — Uses public Binance REST API, RSS feeds, DeFiLlama (free), CoinGecko (free), and Jupiter DEX (free).
 4. **Self-contained** — Single compiled Node.js binary. No Hermes Agent, no Python runtime for core functionality (Python is ML-only).
 5. **Data-portable** — All persistent data resolves through a configurable data directory. Secondary legacy path auto-detected for migration.
+6. **Fastify-only API** — The legacy `src/api/rest.ts` REST handler has been removed. All HTTP serving goes through Fastify.
+7. **Cloud Run–ready** — Debian-based Dockerfile (`node:22-bookworm-slim`) with `deploy.sh` automates Artifact Registry, Cloud Build, Cloud Run deploy, and Cloud Scheduler cron for managed serverless deployment.
 
 ---
 
@@ -38,18 +40,19 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 │                          Crypto Radar (Production Pipeline)                  │
 │                                                                              │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  dist/cli.js  (Compiled TypeScript, 60+ source modules)               │   │
+│  │  dist/cli.js  (Compiled TypeScript, 65+ source modules)               │   │
 │  │                                                                        │   │
 │  │  src/ root-level modules:                                              │   │
 │  │  ├── cli.ts          (Commander.js CLI — dev-only)                     │   │
 │  │  ├── index.ts        (Public API exports)                              │   │
 │  │  ├── types.ts        (Chain, Kline, TokenSignal types)                 │   │
-│  │  ├── tokens.ts       (Token registry — 49+ tokens, 31 chains)         │   │
+│  │  ├── tokens.ts       (Token registry — 85 tokens, 35 chains)         │   │
 │  │  ├── binance.ts      (Binance REST client — ticker + klines)          │   │
 │  │  ├── indicators.ts   (28 technical indicators)                         │   │
 │  │  ├── onchain.ts      (DeFiLlama integration — TVL, fees, prices)      │   │
 │  │  ├── news.ts         (RSS news fetcher — 28 feeds, relevance scoring) │   │
 │  │  ├── signals.ts      (Composite signal scoring + on-chain boost)      │   │
+│  │  ├── gemini.ts       (Vertex AI Gemini 3.1 Pro reasoning enrichment)  │   │
 │  │  ├── radar.ts        (Data enrichment pipeline — the core engine)     │   │
 │  │  ├── output.ts       (Formatters — table, JSONL, JSON, CSV, MD)       │   │
 │  │  ├── coingecko.ts    (CoinGecko fallback price source)                │   │
@@ -71,10 +74,13 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 │  │  │                     alerts, webhook, benchmark, feed-monitor)       │   │
 │  │  ├── analysis/       (Strategies, engine, momentum, mean-reversion,    │   │
 │  │  │                     trend-following, patterns, volume-profile,      │   │
-│  │  │                     correlation, regime, support-resistance)        │   │
-│  │  ├── store/          (SQLite store — node:sqlite, WAL mode)            │   │
+│  │  │                     correlation, regime, support-resistance,       │
+│  │  │                     gemini)                                          │   │
+│  │  ├── store/          (SQLite store + BigQuery async store —             │   │
+│  │  │                     node:sqlite, WAL mode, @google-cloud/bigquery)   │   │
 │  │  ├── sources/        (Futures, Fear & Greed, orderbook, cross-asset)   │   │
-│  │  ├── api/            (REST handler + WS hub + Fastify enterprise)      │   │
+│  │  ├── api/            (Fastify-only — REST handler + WS hub +           │   │
+│  │  │                     enterprise routes in fastify/ subdirectory)     │   │
 │  │  ├── ml/             (Features, labels, dataset, predict, drift,       │   │
 │  │  │                     online, monitor — TypeScript orchestration)     │   │
 │  │  ├── io/             (Charts, advanced-charts, shared-svg,             │   │
@@ -91,6 +97,8 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 │  │  ├── indicators.py    (pandas-ta technical indicators)                  │   │
 │  │  ├── manifest.py      (Model registry — MANIFEST.json)                 │   │
 │  │  ├── model.py         (CatBoost model factory)                         │   │
+│  │  ├── daemon.py        (Python HTTP daemon for real-time inference)     │   │
+│  │  ├── pyproject.toml   (mypy + ruff type/ lint config)                  │   │
 │  │  └── models/          (Trained model files + MANIFEST.json)            │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 │                                                                              │
@@ -99,8 +107,21 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 │  │  ├── crypto-radar-collector.sh  (CRON COLLECTOR — main production     │   │
 │  │  │                                 entry point for scheduled runs)     │   │
 │  │  ├── install.sh         (One-line install for end users)              │   │
+│  │  ├── deploy.sh          (Cloud Run deployment — Artifact Registry,    │   │
+│  │  │                        Cloud Build, Cloud Run, Cloud Scheduler)    │   │
 │  │  ├── setup.sh           (Full environment setup — npm + ML venv)      │   │
 │  │  └── setup-ml-env.sh    (Python ML venv setup via uv)                 │   │
+│  └──────────────────────────────────────────────────────────────────────┘   │
+│                                                                              │
+│  ┌──────────────────────────────────────────────────────────────────────┐   │
+│  │  Root config and build files                                          │   │
+│  │  ├── .dockerignore     (Excludes node_modules, .git, *.test.ts,      │   │
+│  │  │                       coverage, .env, etc. — 60 MB build context) │   │
+│  │  ├── pyproject.toml    (mypy strict + ruff lint for Python ML code)  │   │
+│  │  ├── Dockerfile        (node:22-bookworm-slim + uv Python ML venv)   │   │
+│  │  ├── package.json      (npm scripts including check:python for       │   │
+│  │  │                       Python type checking via mypy + ruff)        │   │
+│  │  └── tsconfig.json     (TypeScript strict mode)                      │   │
 │  └──────────────────────────────────────────────────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -152,6 +173,20 @@ crontab entry (every hour):
     → Output written to /data/crypto-radar/{radar-output.*, crypto-radar*.csv, crypto-radar.db}
 ```
 
+**Cloud Run (production — serverless):**
+```
+deploy.sh (or manual gcloud commands):
+  → Artifact Registry: docker push crypto-radar-image
+  → Cloud Run deploy: gcloud run deploy crypto-radar
+    → Fastify server on :9877 (auto-mapped to HTTPS)
+    → WebSocket on :9878
+    → BigQuery async store active
+    → Gemini 3.1 Pro reasoning on ML predictions
+  → Cloud Scheduler: POST /api/cron/scan every hour
+    → OIDC or x-cron-secret authentication
+    → Full collect + predict cycle
+```
+
 **Secondary (Daemon — REST API for live queries):**
 ```
 node dist/cli.js daemon start
@@ -159,6 +194,7 @@ node dist/cli.js daemon start
   → REST endpoints at /api/*
   → WebSocket on :9878
   → Cache refresh every 300s (configurable)
+  → Cron endpoint at POST /api/cron/scan (secret-gated, rate-limit exempt)
 ```
 
 **Development (CLI — interactive use only):**
@@ -186,7 +222,7 @@ The `plugin/` directory contains a Python bridge (`plugin/__init__.py`) and plug
 
 | Source | Module | Data | Auth |
 |--------|--------|------|------|
-| **Binance Spot** | `binance.ts` | 24hr ticker (49+ pairs), klines (15m/1h/4h/1d), depth snapshots | None (public API) |
+| **Binance Spot** | `binance.ts` | 24hr ticker (85+ pairs), klines (15m/1h/4h/1d), depth snapshots | None (public API) |
 | **Binance Futures** | `sources/futures.ts` | Funding rates, open interest, long/short ratio, liquidations | None (public API) |
 | **CoinGecko** | `coingecko.ts` | Fallback prices for non-Binance tokens, global market data (BTC dominance, total mcap) | None (free tier) |
 | **Jupiter DEX** | `jupiter.ts` | Solana token prices via Jupiter aggregator API | None (free API) |
@@ -194,25 +230,29 @@ The `plugin/` directory contains a Python bridge (`plugin/__init__.py`) and plug
 | **RSS News** | `news.ts` | 28 feeds (CoinTelegraph, CoinDesk, Decrypt, The Block, Blockworks, SolanaFloor, DL News + 21 more) | None (public RSS) |
 | **Fear & Greed** | `sources/fear-greed.ts` | Fear & Greed index from alternative.me | None (free API) |
 | **Cross-Asset** | `sources/cross-asset.ts` | BTC dominance, ETH dominance, total market cap | None (free API) |
+| **BigQuery Store** | `store/db.ts` | Async enterprise data lake via `@google-cloud/bigquery` — tickers, klines, signals, news, predictions, futures data | GCP service account (optional; in-memory SQLite fallback) |
 
-### 3.2 Token Coverage (49+ tokens, 31 chains)
+### 3.2 Token Coverage (85 tokens, 35 chains)
 
-| Chain | Tokens |
+| Group | Tokens |
 |-------|--------|
-| **Solana** (15) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO, TRUMP |
+| **Solana** (14) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO |
+| **Solana (additional)** (1) | TRUMP |
 | **Polygon/DeFi** (13) | POL, SUSHI, UNI, AAVE, CRV, LINK, QUICK, BAL, LDO, BAT, COMP, ZRO, GRT |
 | **Multi/Broad** (6) | BTC, ETH, BNB, XRP, DOGE, ADA |
 | **Cosmos/New L1s** (7) | SUI, APT, SEI, TIA, INJ, RUNE, ATOM |
 | **Layer-1 Broader** (11) | NEAR, TRX, XLM, AVAX, LTC, BCH, HBAR, TAO, DOT, FIL, ZEC |
-| **Ethereum Ecosystem** (10) | PEPE, WLD, ENA, FET, OP, ARB, AXS, JASMY, CVX, 1INCH |
+| **Ethereum Ecosystem** (6) | PEPE, WLD, ENA, FET, OP, ARB |
+| **Ethereum Gaming/DeFi** (4) | AXS, JASMY, CVX, 1INCH |
 | **Monero** (1) | XMR |
 | **Algorand** (1) | ALGO |
 | **BNB Ecosystem** (1) | CAKE |
 | **TRON Ecosystem** (1) | JST |
 | **Tezos** (1) | XTZ |
 | **Theta Network** (1) | THETA |
+| **Research Additions** (17) | ONDO, XEC, OM, AERO, DASH, PENGU, ORDI, CHZ, VIRTUAL, NEO, EIGEN, PENDLE, ICP, SHIB, ETC, SKL, KAITO |
 
-Dynamic top-75 volume detection via `--dynamic` flag.
+Dynamic top-75 volume detection via `--dynamic` flag with synthesized `TokenDef` fallback for high-volume unmatched tickers.
 
 ### 3.3 Technical Indicators (28 computed + sub-components)
 
@@ -255,6 +295,10 @@ Dynamic top-75 volume detection via `--dynamic` flag.
 | **Concept Drift** | `ml/detect_drift.py`, `drift.ts` | ADWIN/PageHinkley/KSWIN detectors, auto-retrain trigger |
 | **Online Learning** | `ml/online.py`, `online.ts` | River LogisticRegression with AdaptiveStandardScaler |
 | **Calibration Monitoring** | `ml/monitor.ts` | ECE (Expected Calibration Error) per confidence bucket |
+| **Model Path Resolution** | `ml/predict.ts` | All model paths (`resolveActiveModel`, `resolveModelPath`, `resolveNormStatsPath`) resolve through `config.dataDir` |
+| **TS-PY Contract** | `predict.ts` ↔ `predict.py` | Feature name header validation between subprocess caller and Python — `PredictContractHeader` interface ensures feature alignment |
+| **Python Code Quality** | `pyproject.toml` | mypy strict mode + ruff lint, enforced via `npm run check:python` |
+| **Gemini Reasoning** | `gemini.ts` | Vertex AI Gemini 3.1 Pro enriches ML predictions with professional market reasoning using recent klines, prices, and signals — stored in the `reasoning` field |
 
 ### 3.6 News Aggregation
 
@@ -262,12 +306,15 @@ Dynamic top-75 volume detection via `--dynamic` flag.
 |---------|--------|
 | **Feed Count** | 28 RSS feeds (CoinTelegraph, CoinDesk, Decrypt, The Block, Blockworks, SolanaFloor, DL News + 21 more) |
 | **Fetch Method** | Concurrency-4 batched Promise.all, 15s timeout per feed |
-| **Relevance Scoring** | Token name in headline (1.0), ticker in headline (0.7), name in description (0.7), ticker in description (0.5), $ticker in description (0.5) |
+| **Relevance Scoring** | Token name in headline (1.0), ticker in headline with crypto context (0.7), name in description (0.7), ticker in headline bare (0.5), ticker in description with $ (0.5) |
 | **Source Tier Weights** | CoinTelegraph/CoinDesk/Decrypt = 1.0, NullTX = 0.4, graduated scale |
-| **Sentiment Bonus** | Bullish/bearish keywords in headline (+0.2) |
-| **Recency Bonus** | <6h old (+0.3), <24h (+0.1) |
-| **Deduplication** | 1-hour sliding window, SHA-1 based dedup |
+| **Minimum Relevance** | `MIN_MATCH_RELEVANCE = 0.5` — articles below this threshold are discarded |
+| **Tier Penalty** | Feeds at tier 3+ require 0.2 additional relevance to pass filter |
+| **Sentiment Boost** | Bullish keywords in headline (+0.1) |
+| **Recency Bonus** | <6h old (+0.2) |
+| **Deduplication** | `deduplicateMatches()` — headline-normalized dedup, keeps highest-tier source when duplicates found |
 | **Poison Filtering** | Token headline/body matching to filter irrelevant articles |
+| **JSONL Output** | `appendNewsToJsonl()` writes separate `crypto-radar-news.jsonl` file with structured fields (ts, symbol, feed, headline, url, relevance, sentiment, tier) |
 
 ### 3.7 Charts & Visual Output
 
@@ -293,6 +340,7 @@ Dynamic top-75 volume detection via `--dynamic` flag.
 | **CSV** | `crypto-radar-news.csv` | Append + SHA-256 checksum | Rolling news dataset |
 | **JSONL** | `radar-runlog.jsonl` | Append (single file) | Run history ledger |
 | **JSONL** | `radar-tickers.jsonl` | Append (single file) | ML-ready ticker dataset |
+| **JSONL** | `crypto-radar-news.jsonl` | Append (single file) | Structured news dataset with sentiment and tier fields |
 | **SQLite** | `crypto-radar.db` | SQLite upsert (WAL mode) | Structured store (klines, tickers, signals, news, predictions, etc.) |
 | **Table (TXT)** | `radar-output.txt` | Overwrite + rotate to archive/ | Human-readable scan table |
 | **CSV** | `radar-output.csv` | Overwrite + rotate to archive/ | Latest scan CSV |
@@ -319,10 +367,15 @@ Dynamic top-75 volume detection via `--dynamic` flag.
 | **Health Monitoring** | `monitor/health.ts` | Binance, Jupiter, DeFiLlama, cache, feed health checks |
 | **Feed Monitor** | `core/feed-monitor.ts` | Per-feed success/failure tracking, dead feed detection |
 | **Backtesting** | `backtest.ts` | Strategy backtesting + weight optimization engine |
+| **Docker Build Context** | `.dockerignore` | Excludes node_modules, .git, *.test.ts, coverage, .env → 60 MB vs 313 MB |
+| **BigQuery Store** | `store/db.ts` | Async enterprise data lake — tickers, klines, signals, news, predictions, futures tables; in-memory SQLite fallback when GCP unavailable |
+| **Gemini Reasoning** | `gemini.ts` | Vertex AI Gemini 3.1 Pro market reasoning enrichment for ML predictions via Vertex AI client |
+| **Cloud Run Deploy** | `deploy.sh` | Automated GCP provisioning — Artifact Registry image push, Cloud Build, Cloud Run deploy, Cloud Scheduler cron setup |
+| **Debian Dockerfile** | `Dockerfile` | `node:22-bookworm-slim` base with `uv` Python ML venv for drift detection |
 
 ### 3.10 REST API (30+ endpoints)
 
-Fastify server (port 9877) with CORS, JWT auth, rate-limit, compression, Swagger docs.
+Fastify server (port 9877) with CORS, JWT auth, rate-limit, compression, Swagger docs. Fastify is the sole API provider — the legacy `src/api/rest.ts` has been removed.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -346,6 +399,7 @@ Fastify server (port 9877) with CORS, JWT auth, rate-limit, compression, Swagger
 | GET | `/api/predictions/:symbol` | Predictions per symbol |
 | GET | `/api/stats` | Row counts per table |
 | POST | `/api/collect` | Trigger backfill (token-gated) |
+| POST | `/api/cron/scan` | Secure cron trigger (secret-gated, rate-limit exempt) |
 | GET | `/api/ml/status` | Pipeline health |
 | GET | `/api/ml/models` | Model registry list |
 | GET | `/api/ml/drift` | Recent drift events |
@@ -375,6 +429,19 @@ Complete portfolio simulation engine (`paper-trade.ts`, `paper-trade-cli.ts`):
 - Performance reports (PnL, win rate, Sharpe)
 - Signal-based auto-trading via `agentPlay()`
 
+### 3.13 Token Validation
+
+The `tokens --validate` Commander.js command curls every registry token against the live Binance USDT pair set and reports:
+- **Valid tokens** — those with a live Binance USDT pair and positive 24h quote volume
+- **Dead/delisted tokens** — those with zero volume or missing pairs, candidates for pruning
+
+```bash
+node dist/cli.js tokens --validate
+# → Reports 85 valid, 0 dead
+```
+
+The `validateTokenCoverage()` function in `src/tokens.ts` performs the live check using `fetchAllUsdtTickers()`.
+
 ---
 
 ## 4. Data Flow
@@ -394,6 +461,10 @@ cron trigger (or CLI invocation)
     → analysis/engine.ts: StrategyEngine.evaluate() [3 strategies, multi-TF aggregation]
     → output.ts: format → JSON/table/csv/md
     → File system: append CSV logs + overwrite reports + rotate to archive/
+    → news.ts: appendNewsToJsonl() [separate crypto-radar-news.jsonl file]
+    → store/db.ts: BigQuery async store (tickers, signals, news, predictions) with in-memory SQLite fallback
+    → gemini.ts: Vertex AI Gemini 3.1 Pro reasoning enrichment on ML predictions using recent klines, prices, and signals
+    → Store predictions with reasoning field
 ```
 
 ### 4.2 Collector Pipeline (Historical Backfill)
@@ -421,11 +492,19 @@ Daemon refresh → check config.ml.enabled
   → computeLabels() [forward returns at configured horizon]
   → assembleDataset() [inner join, NaN drop, 70/15/15 split, z-score normalize]
   → spawn ml/train.py [CatBoost with early stopping, optuna, shap]
-  → save model + MANIFEST.json to ml/models/
+  → save model + MANIFEST.json to <dataDir>/ml/models/  [config.dataDir-based]
   → batchPredict() [build features → normalize → CSV → spawn predict.py]
+      → TS-PY contract header (_header, _features, _featureCount) validates alignment
   → persistPredictions() [write to predictions table]
+  → gemini.ts: enrich prediction with Gemini 3.1 Pro market reasoning [recent klines, prices, signals → reasoning field]
+  → store/db.ts: async BigQuery store (tickers, signals, predictions, news) with in-memory SQLite fallback
   → detectDrift() [ADWIN on prediction errors → auto-retrain if needed]
 ```
+
+**Model Path Resolution (all config.dataDir-based):**
+- `resolveActiveModel()` → `<dataDir>/ml/models/MANIFEST.json` → active model path
+- `resolveModelPath()` → `<dataDir>/ml/models/` → latest `model_*.joblib`
+- `resolveNormStatsPath()` → `<dataDir>/ml/` → latest `*_norm_*.json`
 
 ### 4.4 Signal Scoring Model
 
@@ -439,9 +518,9 @@ Daemon refresh → check config.ml.enabled
 | Volume adjustment | −6 to +8 | Graduated volVsAvg scale |
 | Calibration penalty | ±15pp | Inter-strategy conflict/agreement |
 
-### 4.5 SQLite Store Schema
+### 4.5 Store Schema (SQLite + BigQuery)
 
-The `Store` class wraps `node:sqlite` (`DatabaseSync`) in WAL mode. Single-file store at `<dataDir>/crypto-radar.db`.
+The `Store` class wraps `node:sqlite` (`DatabaseSync`) in WAL mode for local persistence, with an async BigQuery layer (`store/db.ts`) for enterprise data lake workloads. Single-file SQLite store at `<dataDir>/crypto-radar.db`. BigQuery dataset mirrors the same table schema when enabled, with in-memory SQLite fallback when GCP is unavailable.
 
 | Table | Type | Primary Key | Purpose |
 |-------|------|-------------|---------|
@@ -500,19 +579,22 @@ The `Store` class wraps `node:sqlite` (`DatabaseSync`) in WAL mode. Single-file 
 | 6 | `radar.ts` (via xlsx-export) | `radar-output.xlsx` | Overwrite + rotate to archive/ |
 | 7 | `cli.ts` | `radar-runlog.jsonl` | Append |
 | 8 | `cli.ts` | `radar-tickers.jsonl` | Append |
-| 9 | `collector.ts` | `crypto-radar.db` | SQLite upsert (WAL mode) |
-| 10 | `daemon.ts` | `crypto-radar.db` | SQLite upsert |
-| 11 | `cli.ts` (ml commands) | `crypto-radar.db` | SQLite upsert |
-| 12 | `paper-trade.ts` | `profiles/*.json` | File write |
-| 13 | `paper-trade.ts` | `last-profile.txt` | File write |
-| 14 | `radar.ts` | `radar.lock` | Atomic file write |
-| 15 | `radar.ts` | `crypto-radar-state.json` | JSON dump |
-| 16 | `daemon.ts` | `daemon.pid` | PID file |
-| 17 | `cli.ts` (report) | `crypto-radar-report.html` | Overwrite |
-| 18 | `ml/dataset.ts` | `data/ml/*.csv` | CSV export (training data) |
-| 19 | `log-rotation.ts` | `archive/*.gz` | Monthly gzip archive |
+| 9 | `news.ts` | `crypto-radar-news.jsonl` | Append |
+| 10 | `collector.ts` | `crypto-radar.db` | SQLite upsert (WAL mode) |
+| 11 | `daemon.ts` | `crypto-radar.db` | SQLite upsert |
+| 12 | `cli.ts` (ml commands) | `crypto-radar.db` | SQLite upsert |
+| 13 | `paper-trade.ts` | `profiles/*.json` | File write |
+| 14 | `paper-trade.ts` | `last-profile.txt` | File write |
+| 15 | `radar.ts` | `radar.lock` | Atomic file write |
+| 16 | `radar.ts` | `crypto-radar-state.json` | JSON dump |
+| 17 | `daemon.ts` | `daemon.pid` | PID file |
+| 18 | `cli.ts` (report) | `crypto-radar-report.html` | Overwrite |
+| 19 | `ml/dataset.ts` | `<dataDir>/ml/*.csv` | CSV export (training data) |
+| 20 | `log-rotation.ts` | `archive/*.gz` | Monthly gzip archive |
+| 21 | `ml/predict.ts` | `<dataDir>/ml/models/` | Model files + MANIFEST.json |
+| 22 | `store/db.ts` | BigQuery dataset | Async enterprise data lake — tickers, klines, signals, news, predictions, futures tables (in-memory SQLite fallback) |
 
-All write sites resolve through `config.dataDir`. CWD-relative paths were hardened to `config.dataDir` in v2.4.0.
+All write sites resolve through `config.dataDir`. CWD-relative paths were hardened to `config.dataDir` in v2.4.0. ML model paths use `config.dataDir` consistently via `resolveActiveModel()`, `resolveModelPath()`, and `resolveNormStatsPath()`.
 
 ### 5.4 File Output Summary
 
@@ -522,6 +604,7 @@ After each cron run, the data directory contains:
 |------|---------|--------|
 | `crypto-radar-log.csv` | Rolling scan log | CSV with SHA-256 checksums |
 | `crypto-radar-news.csv` | Rolling news log | CSV |
+| `crypto-radar-news.jsonl` | Structured news dataset | JSON Lines (ts, symbol, feed, headline, url, relevance, sentiment, tier) |
 | `crypto-radar.db` | Persistent SQLite store | SQLite (WAL mode) |
 | `radar-output.txt` | Latest scan table | Plain text |
 | `radar-output.csv` | Latest scan data | CSV |
@@ -530,8 +613,9 @@ After each cron run, the data directory contains:
 | `radar-runlog.jsonl` | Append-only run log | JSON Lines |
 | `radar-tickers.jsonl` | Append-only ticker data | JSON Lines |
 | `archive/` | Monthly gzipped archives | `.gz` (rotated at month boundary) |
+| **BigQuery** | Enterprise data lake | `@google-cloud/bigquery` — tickers, klines, signals, news, predictions, futures (async, with in-memory SQLite fallback) |
 
-### 5.6 Startup Validation
+### 5.5 Startup Validation
 
 At config load time (`src/core/config.ts`), the resolved data directory is logged:
 
@@ -579,6 +663,7 @@ All env vars use the `RADAR__` prefix. They override values from `radar.config.j
 | `RADAR__DAEMON_PORT` | `9877` | Daemon HTTP server port |
 | `RADAR__WS_PORT` | `9878` | WebSocket server port |
 | `RADAR__DAEMON_REFRESH_SEC` | `300` | Cache refresh interval in seconds |
+| `RADAR__CRON_SECRET` | — | Secret for POST /api/cron/scan endpoint |
 | **Store** | | |
 | `RADAR__STORE_PATH` | `<dataDir>/crypto-radar.db` | SQLite store file path |
 | `RADAR__STORE_RETENTION_DAYS` | `30` | Data retention days in store |
@@ -645,7 +730,7 @@ sudo chown -R $(whoami):$(whoami) /data/crypto-radar
 The collector script runs:
 1. `node dist/cli.js scan --dynamic 30 --onchain --no-news --format json --quiet` — Live scan with auto-save to all formats
 2. `node dist/cli.js collect --klines --futures` — Backfill klines and futures data to SQLite
-3. `node dist/cli.js ml predict --interval 1h` — ML prediction (if model exists)
+3. `node dist/cli.js ml predict --interval 1h` — ML prediction (if model exists at `<dataDir>/ml/models/`)
 4. Archive housekeeping — moves old files to `archive/`, migrates legacy file names
 
 ### 7.5 Daemon Setup (Optional — REST API)
@@ -661,6 +746,7 @@ The daemon pre-warms caches on startup and refreshes every 300s (configurable). 
 - WebSocket on port 9878 (4 channels: prices, signals, news, portfolio)
 - Health check at `/health`
 - Manual cache refresh at `/refresh`
+- Secure cron endpoint at `POST /api/cron/scan` (rate-limit exempt, secret-gated)
 
 ### 7.6 Complete Installation
 
@@ -683,7 +769,10 @@ bash scripts/setup-ml-env.sh
 # 5. Test
 node dist/cli.js scan --filter SOL --no-news --format json
 
-# 6. Install cron job
+# 6. Validate token coverage
+node dist/cli.js tokens --validate
+
+# 7. Install cron job
 crontab -e
 # Add: 0 * * * * RADAR__DATA_DIR=/data/crypto-radar /opt/hermes-crypto-radar/scripts/crypto-radar-collector.sh >> /data/crypto-radar/cron-run.log 2>&1
 ```
@@ -696,9 +785,10 @@ crontab -e
 4. Set `RADAR__DATA_DIR` in cron environment
 5. Test scan — `node dist/cli.js scan --filter SOL --no-news`
 6. (Optional) Set up ML — `npm run ml:setup` + `RADAR__ML_PYTHON`
-7. Install cron job for automated collection
-8. (Optional) Start daemon for REST API
-9. Verify startup log — check for `INFO  Config loaded  dataDir=/data/crypto-radar`
+7. Validate token coverage — `node dist/cli.js tokens --validate`
+8. Install cron job for automated collection
+9. (Optional) Start daemon for REST API
+10. Verify startup log — check for `INFO  Config loaded  dataDir=/data/crypto-radar`
 
 ### 7.8 Required Permissions
 
@@ -711,6 +801,19 @@ crontab -e
 ### 7.9 Env Propagation Warning
 
 When running as a cron task, environment variables are set at **cron daemon start time** and are **not** inherited from the user's shell profile. Every `RADAR__*` env var must be explicitly set in the cron command line or be present in the system's cron environment.
+
+### 7.10 Docker Build Context
+
+The `.dockerignore` file reduces the build context from ~313 MB to ~60 MB by excluding:
+- `node_modules/` (largest contributor)
+- `.git/` (repository history)
+- `dist/*.map` (source maps)
+- `*.test.ts` (test files)
+- `__pycache__/`, `*.pyc` (Python bytecode)
+- `coverage/` (test coverage reports)
+- `.env`, `.env.local` (secrets)
+- `.venv-ml/` (ML virtual environment)
+- `.gitignore`, `.hermes/`, `.cursorrules` (dev config)
 
 ---
 
@@ -726,6 +829,7 @@ These commands exist for development and interactive use. They are not the prima
 | `crypto-radar signals` | Quick signal snapshot |
 | `crypto-radar news` | Fetch and score crypto news |
 | `crypto-radar tokens` | List tracked tokens |
+| `crypto-radar tokens --validate` | Validate registry tokens against live Binance API |
 | `crypto-radar chart` | Generate SVG or ASCII charts |
 | `crypto-radar daemon` | Start/stop/status warm daemon |
 | `crypto-radar ws` | Start/stop/status WebSocket streams |
@@ -757,10 +861,13 @@ npm run collector     # Historical backfill
 npm run ml:setup      # Set up Python ML environment
 npm run ml:train      # Train ML model
 npm run ml:predict    # Run ML prediction
+npm run check:python  # Python type check (mypy --strict) + lint (ruff)
 npm run benchmark     # Performance benchmarks
 npm run backtest      # Strategy backtesting
 npm run docs          # Generate TypeDoc API reference
 ```
+
+**Note:** The stale `./prices` export has been removed from `package.json`. The only package exports are `.` (main), `./news`, and `./signals`.
 
 ### 8.3 Hermes Plugin Integration (BROKEN)
 
@@ -777,7 +884,22 @@ The Hermes plugin integration (`plugin/` directory, `plugin.yaml`) is **legacy a
 
 The Python bridge (`plugin/__init__.py`) spawns `node dist/cli.js` subprocesses and wraps output as Hermes tool responses. This path has **never been validated end-to-end**. All functionality works independently through the CLI and REST API.
 
-### 8.4 Testing
+### 8.4 Python Code Quality
+
+Python ML code is type-checked and linted via `pyproject.toml`:
+
+| Tool | Config | Command |
+|------|--------|---------|
+| **mypy** | `strict = true`, `ignore_missing_imports = true` | `npm run check:python` |
+| **ruff** | Target `py312`, select E/W/F/I/N/UP | (same `check:python` script) |
+
+```bash
+npm run check:python
+# → mypy --strict --ignore-missing-imports *.py
+# → ruff check *.py
+```
+
+### 8.5 Testing
 
 - **Test framework:** Vitest v4 with v8 coverage provider
 - **Test count:** ~1222 tests across 55+ test files
@@ -785,7 +907,7 @@ The Python bridge (`plugin/__init__.py`) spawns `node dist/cli.js` subprocesses 
 - **Test types:** Unit, integration, smoke, E2E, fuzz (157 edge-case tests)
 - **Excluded from coverage:** ML modules (Python infra dependency), chart modules (SVG rendering infra)
 
-### 8.5 Code Quality
+### 8.6 Code Quality
 
 - TypeScript strict mode with `noUncheckedIndexedAccess`, `noImplicitOverride`
 - ESLint with `typescript-eslint` strict rules
@@ -793,10 +915,50 @@ The Python bridge (`plugin/__init__.py`) spawns `node dist/cli.js` subprocesses 
 - Husky pre-commit hooks
 - Full JSDoc on all exported functions
 - TypeDoc API documentation
+- Python ML code: mypy strict + ruff lint
 
 ---
 
 ## 9. Changelog
+
+### [2.6.0] — 2026-07-19
+
+**Added:**
+- 17 new tokens (ONDO, XEC, OM, AERO, DASH, PENGU, ORDI, CHZ, VIRTUAL, NEO, EIGEN, PENDLE, ICP, SHIB, ETC, SKL, KAITO) — token registry grows to 85
+- Synthesized `TokenDef` fallback in `getTopTokensByVolume()` — top-75 dynamic scan now works even for unmatched high-volume tickers
+- `appendNewsToJsonl()` — separate `crypto-radar-news.jsonl` output file with structured fields (ts, symbol, feed, headline, url, relevance, sentiment, tier)
+- `deduplicateMatches()` — headline-normalized dedup keeping highest-tier source
+- `MIN_MATCH_RELEVANCE = 0.5` filter + tier 3+ penalty of 0.2 extra relevance required
+- `tokens --validate` command that curls every registry token against live Binance USDT pairs
+- Python type checking: `pyproject.toml` with mypy (strict) + ruff; `npm run check:python` script
+- `.dockerignore` reduces build context from ~313 MB to ~60 MB
+- Secure cron endpoint `POST /api/cron/scan` (rate-limit exempt, secret-gated, `CRON_SECRET` env var)
+- MANIFEST.json horizon threading into the cron route for ML prediction parameters
+- **Google Cloud Run & Cloud Scheduler Automation** — Secure hourly cron trigger endpoint for full radar scan, data collection, and ML predictions cycle. Cloud Scheduler triggers via OIDC or shared `x-cron-secret`
+- **Vertex AI Gemini 3.1 Pro Integration** (`src/analysis/gemini.ts`) — Generates professional market reasoning for ML predictions using recent klines, prices, and signals, stored in the `reasoning` field
+- **Asynchronous BigQuery Store** (`src/store/db.ts`) — Core Data Layer refactored to async with BigQuery + in-memory SQLite fallback
+- **Automated Deployment Script** (`deploy.sh`) — Full provisioning: Artifact Registry, Cloud Build, Cloud Run deploy, Cloud Scheduler cron
+- **Debian-Based Dockerfile** — `node:22-bookworm-slim` with `uv` Python ML venv for drift detection
+
+**Changed:**
+- ML model paths (`resolveActiveModel`, `resolveModelPath`, `resolveNormStatsPath`) all resolve through `config.dataDir` instead of hardcoded paths
+- Fastify is now the sole API provider — legacy `src/api/rest.ts` deleted
+- Collector script ML model path uses `DATA_DIR/ml/models/` not hardcoded `ml/models/`
+- TS-PY contract: feature name header validation (`PredictContractHeader` interface) between `predict.ts` and `predict.py`
+- Alert failures: `.catch(() => {})` replaced with `logger.error` in alert delivery and webhook loading
+- Stale `./prices` export removed from `package.json` — exports are now `.`, `./news`, `./signals`
+
+**Fixed:**
+- Package.json exports cleanup — removed dead `./prices` entry
+
+### [2.5.0] — 2026-07-18
+
+**Added:**
+- Gemini 3.1 Pro reasoning enrichment for ML predictions in cron route
+- Additional Solana ecosystem feeds (SolanaFM, Google News DeFi, Crypto Briefing DeFi)
+
+**Fixed:**
+- `resolveModelPath` fallback to `model.joblib` if no timestamped models exist
 
 ### [2.4.0] — 2026-07-18
 
@@ -902,3 +1064,20 @@ The Python bridge (`plugin/__init__.py`) spawns `node dist/cli.js` subprocesses 
 - Composite signal engine (3 strategies)
 - RSS news (9 feeds), CSV/MD/JSON output
 - CLI-first design
+
+---
+
+## 10. GCP Reference Documentation
+
+Detailed reference guides for each GCP service used in the production deployment are maintained in `docs/references/`:
+
+| Service | Reference Doc | Free Tier |
+|---------|--------------|-----------|
+| **BigQuery** | [`docs/references/bigquery.md`](docs/references/bigquery.md) | 10 GB storage, 1 TiB queries/month |
+| **Cloud Run** | [`docs/references/cloud-run.md`](docs/references/cloud-run.md) | 240K vCPU-seconds, 450K GiB-seconds/month |
+| **Cloud Storage** | [`docs/references/cloud-storage.md`](docs/references/cloud-storage.md) | 5 GB storage, 50K ops/month |
+| **Vertex AI** | [`docs/references/vertex-ai.md`](docs/references/vertex-ai.md) | $300 credits + Gemini API free tier |
+| **Cloud Scheduler** | [`docs/references/cloud-scheduler.md`](docs/references/cloud-scheduler.md) | 3 jobs free/month |
+| **Artifact Registry** | [`docs/references/artifact-registry.md`](docs/references/artifact-registry.md) | 500 MB storage/month |
+
+All Crypto Radar GCP services operate within free tier limits. The $300 Vertex AI credits are reserved for Gemini 3.1 Pro reasoning calls and optional ML experimentation.

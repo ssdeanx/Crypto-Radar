@@ -41,7 +41,7 @@ const INTERVAL_MS: Record<string, number> = {
  *     (the most recent snapshot before each kline's open_time).
  * F5: NaN/Infinity in output features are set to null for downstream filtering.
  */
-export function buildFeatures(
+export async function buildFeatures(
   symbol: string,
   interval: string,
   klines: KlineRow[],
@@ -49,7 +49,7 @@ export function buildFeatures(
   crossAsset?: CrossAssetRow[],
   funding?: FundingRow[],
   referenceKlines?: Map<string, number[]>,
-): FeatureRow[] {
+): Promise<FeatureRow[]> {
   const intervalMs = INTERVAL_MS[interval] ?? 3_600_000;
   const features: FeatureRow[] = [];
 
@@ -143,7 +143,7 @@ export function buildFeatures(
 
     // ── Technical indicators (reuse computeAllIndicators) ──
     if (includeIndicators) {
-      const techs = computeAllIndicators(indicatorInput);
+      const techs = await computeAllIndicators(indicatorInput);
       if (techs) {
         addTechnicalFeatures(row, techs, closes, windowKlines, referenceKlines);
       }

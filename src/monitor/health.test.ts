@@ -113,8 +113,9 @@ describe('HealthMonitor', () => {
     const before = await monitor.check();
     monitor.reset();
     const after = await monitor.check();
-    // Uptime should be lower after reset compared to if we hadn't reset
-    expect(after.uptime).toBeGreaterThanOrEqual(0);
+    // Uptime should be lower or equal after reset
+    expect(before.uptime).toBeGreaterThanOrEqual(0);
+    expect(after.uptime).toBeLessThanOrEqual(before.uptime);
   });
 
   it('returns unfiltered fields when no feeds registered', async () => {

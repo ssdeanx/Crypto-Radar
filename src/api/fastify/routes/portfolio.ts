@@ -101,7 +101,7 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
 
     // For sell trades, check if there's an open position to close
     if (side === 'sell') {
-      const openTrades = app.store.getPaperTrades(profile, 'open');
+      const openTrades = await app.store.getPaperTrades(profile, 'open');
       const heldQty = openTrades
         .filter(t => t.symbol === symbol && t.side === 'buy')
         .reduce((sum, t) => sum + (t.quantity ?? 0), 0);
@@ -142,7 +142,7 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
 
     // If sell, try to match against open buys and compute PnL
     if (side === 'sell') {
-      const openBuys = app.store.getPaperTrades(profile, 'open')
+      const openBuys = (await app.store.getPaperTrades(profile, 'open'))
         .filter(t => t.symbol === symbol && t.side === 'buy')
         .sort((a, b) => (a.entry_time ?? '').localeCompare(b.entry_time ?? '')); // FIFO
 
@@ -228,7 +228,7 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/portfolio/history (returns all trades with summary) ──
   app.get('/history', async (request, reply) => {
     const { profile } = request.query as { profile?: string };
-    const trades = app.store.getPaperTrades(profile ?? 'trader1');
+    const trades = await app.store.getPaperTrades(profile ?? 'trader1');
 
     let totalPnl = 0;
     let wins = 0;

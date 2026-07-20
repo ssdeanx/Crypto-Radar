@@ -20,7 +20,10 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/ml/status — ML pipeline health ──
   app.get('/api/ml/status', async () => {
     const config = loadConfig();
-    const modelsDir = path.resolve('ml/models');
+    let modelsDir = path.join(config.dataDir, 'ml', 'models');
+    if (!existsSync(modelsDir)) {
+      modelsDir = path.resolve(process.cwd(), 'ml', 'models');
+    }
     const manifestPath = path.resolve(modelsDir, 'MANIFEST.json');
     const hasManifest = existsSync(manifestPath);
 
@@ -39,7 +42,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
       }
     }
 
-    const stats = store.stats();
+    const stats = await store.stats();
 
     return {
       enabled: config.ml?.enabled ?? false,
@@ -52,21 +55,27 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
         trainingTimestamp: activeModelInfo.training_timestamp,
         isProduction: activeModelInfo.is_production,
       } : null,
+      activeModelPath: resolveActiveModel(modelsDir),
       modelsCount,
-      lastTrain: null, // TODO: read from manifest or store
+      lastTrain: activeModelInfo?.training_timestamp ?? null,
       predictions24h: stats.predictions ?? 0,
       driftEvents24h: stats.drift_events ?? 0,
       storeStats: {
         tickers: stats.tickers ?? 0,
         klines: stats.klines ?? 0,
         predictions: stats.predictions ?? 0,
+        supportedTokens: getTokenList().length,
       },
     };
   });
 
   // ── GET /api/ml/models — list all models ──
   app.get('/api/ml/models', async () => {
-    const manifestPath = path.resolve('ml/models/MANIFEST.json');
+    let modelsDir = path.join(loadConfig().dataDir, 'ml', 'models');
+    if (!existsSync(modelsDir)) {
+      modelsDir = path.resolve(process.cwd(), 'ml', 'models');
+    }
+    const manifestPath = path.join(modelsDir, 'MANIFEST.json');
     if (!existsSync(manifestPath)) {
       return { models: [], activeModel: null };
     }
@@ -94,7 +103,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/ml/drift', async (request) => {
     const query = request.query as { limit?: string };
     const limit = parseInt(query.limit ?? '50', 10);
-    const events = store.getDriftEvents({ limit });
+    const events = await store.getDriftEvents({ limit });
     return { events, count: events.length };
   });
 
@@ -102,7 +111,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   app.get('/api/ml/predictions', async (request) => {
     const query = request.query as { limit?: string; symbol?: string };
     const limit = parseInt(query.limit ?? '50', 10);
-    const predictions = store.getPredictions({
+    const predictions = await store.getPredictions({
       limit,
       symbol: query.symbol,
     });
@@ -111,7 +120,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /api/ml/calibration — prediction calibration report ──
   app.get('/api/ml/calibration', async () => {
-    const calibration = computeCalibration(store);
+    const calibration = await computeCalibration(store);
     return calibration;
   });
 

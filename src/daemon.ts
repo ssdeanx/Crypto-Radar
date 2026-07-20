@@ -161,10 +161,10 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
     const allLabels: import('./ml/types.js').LabelRow[] = [];
     const allKlinesBySymbol = new Map<string, number[]>();
 
-    const btcKlines = _store.getKlines('BTCUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
-    const ethKlines = _store.getKlines('ETHUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
-    const solKlines = _store.getKlines('SOLUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
-    const polKlines = _store.getKlines('POLUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
+    const btcKlines = (await _store.getKlines('BTCUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
+    const ethKlines = (await _store.getKlines('ETHUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
+    const solKlines = (await _store.getKlines('SOLUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
+    const polKlines = (await _store.getKlines('POLUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
     const referenceKlines = new Map<string, number[]>();
     if (btcKlines.length >= 20) referenceKlines.set('BTCUSDT', btcKlines.map(k => k.close));
     if (ethKlines.length >= 20) referenceKlines.set('ETHUSDT', ethKlines.map(k => k.close));
@@ -173,17 +173,17 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
 
     for (const symbol of symbols) {
       for (const interval of INTERVALS) {
-        const klines = _store.getKlines(symbol, interval, {
+        const klines = (await _store.getKlines(symbol, interval, {
           limit: Math.max(60, lookbackDays * 24),
           order: 'desc',
-        }).reverse();
+        })).reverse();
         if (klines.length < 60) continue;
         allKlinesBySymbol.set(`${symbol}:${interval}`, klines.map(k => k.close));
 
-        const crossAsset = _store.getCrossAsset(200);
-        const funding = _store.getFunding(symbol, 100);
+        const crossAsset = await _store.getCrossAsset(200);
+        const funding = await _store.getFunding(symbol, 100);
 
-        const features = buildFeatures(
+        const features = await buildFeatures(
           symbol, interval, klines,
           {
             includeReturns: true, includeIndicators: true,
@@ -512,7 +512,7 @@ export async function runDaemon(): Promise<void> {
   const config = loadConfig();
   try {
     _store = Store.open(config.dataDir);
-    _store.migrate();
+    await _store.migrate();
     log.info('SQLite store opened and migrated');
   } catch (err) {
     log.warn('Failed to open store, continuing without persistence', { error: String(err) });

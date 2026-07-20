@@ -19,7 +19,8 @@ function runCLI(args: string): { stdout: string; stderr: string; exitCode: numbe
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     return { stdout: stdout.trim(), stderr: '', exitCode: 0 };
-  } catch (err: any) {
+  } catch (error: unknown) {
+    const err = error as Error & { stdout?: string | Buffer; stderr?: string | Buffer; status?: number };
     return {
       stdout: (err.stdout ?? '').toString().trim(),
       stderr: (err.stderr ?? '').toString().trim(),
@@ -34,7 +35,7 @@ describe.skip('End-to-End CLI Smoke Tests', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout.length).toBeGreaterThan(0);
 
-    let parsed: any;
+    let parsed: Record<string, unknown>;
     try {
       parsed = JSON.parse(result.stdout);
     } catch {
@@ -45,9 +46,9 @@ describe.skip('End-to-End CLI Smoke Tests', () => {
 
     expect(parsed).toHaveProperty('tickers');
     expect(Array.isArray(parsed.tickers)).toBe(true);
-    expect(parsed.tickers.length).toBeGreaterThanOrEqual(1);
+    expect((parsed.tickers as unknown[]).length).toBeGreaterThanOrEqual(1);
 
-    const ticker = parsed.tickers[0];
+    const ticker = (parsed.tickers as Record<string, unknown>[])[0];
     expect(ticker).toHaveProperty('symbol');
     expect(ticker).toHaveProperty('lastPrice');
     expect(ticker).toHaveProperty('priceChangePercent');
@@ -64,7 +65,7 @@ describe.skip('End-to-End CLI Smoke Tests', () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout.length).toBeGreaterThan(0);
 
-    let parsed: any;
+    let parsed: unknown[];
     try {
       parsed = JSON.parse(result.stdout);
     } catch {

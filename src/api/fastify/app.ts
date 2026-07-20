@@ -31,6 +31,7 @@ import { authRoutes } from './routes/auth.js';
 import { mlRoutes } from './routes/ml.js';
 import { portfolioRoutes } from './routes/portfolio.js';
 import { restRoutes } from './routes/rest.js';
+import { cronRoutes } from './routes/cron.js';
 import { logger } from '../../core/logger.js';
 
 const log = logger.child({ module: 'fastify-app' });
@@ -78,7 +79,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
       'http://localhost:4173',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'x-cron-secret'],
     credentials: true,
     maxAge: 600, // 10 min preflight cache
   });
@@ -197,6 +198,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   await app.register(authRoutes, { prefix: '/api/auth' });          // Auth routes (login, signup, me)
   await app.register(portfolioRoutes, { prefix: '/api/portfolio' }); // Portfolio routes (trade, history)
   await app.register(mlRoutes);                                      // ML pipeline routes
+  await app.register(cronRoutes);                                    // Secure automated cron routes
 
   // ── Enterprise: 404 handler ──
   app.setNotFoundHandler((_request, reply) => {

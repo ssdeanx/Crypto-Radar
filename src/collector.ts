@@ -109,7 +109,7 @@ export async function runCollector(opts?: CollectorOptions): Promise<CollectorRe
 
   const config = loadConfig();
   const store = Store.open(config.dataDir);
-  store.migrate();
+  await store.migrate();
 
   try {
     const tokens = getTokenList();
@@ -166,7 +166,7 @@ async function collectKlines(
       const lookbackMs = backfillDays * 86400000;
       const nowMs = Date.now();
 
-      const last = store.latestKlineTime(symbol, interval);
+      const last = await store.latestKlineTime(symbol, interval);
 
       if (last === null) {
         await seedKlines(store, symbol, interval, intervalMs, lookbackMs, nowMs, onProgress, report);

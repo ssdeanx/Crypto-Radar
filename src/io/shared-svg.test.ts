@@ -22,12 +22,7 @@ import {
   svgClose,
   chartStyles,
   chartDefs,
-  BG,
-  TEXT,
-  ACCENT,
-  SUBTLE,
-  MUTED,
-  GRID_LINE,
+  BG, TEXT, ACCENT, SUBTLE, MUTED, GRID_LINE,
 } from './shared-svg.js';
 import type { Kline } from '../types.js';
 
@@ -303,3 +298,38 @@ describe('calcCandleWidth', () => {
     expect(calcCandleWidth(500, 100)).toBeCloseTo(3.5, 1);
   });
 });
+
+// ── Constants & Types ──
+
+describe('Constants', () => {
+  it('exports valid hex colors', () => {
+    const isHex = (str: string) => /^#[0-9A-Fa-f]{6}$/.test(str);
+    expect(isHex(BG)).toBe(true);
+    expect(isHex(TEXT)).toBe(true);
+    expect(isHex(ACCENT)).toBe(true);
+    expect(isHex(SUBTLE)).toBe(true);
+    expect(isHex(MUTED)).toBe(true);
+    expect(isHex(GRID_LINE)).toBe(true);
+  });
+});
+
+describe('Type compatibility', () => {
+  it('can use Kline type', () => {
+    const k: Kline = {
+      openTime: 12345,
+      open: 1,
+      high: 2,
+      low: 0,
+      close: 1.5,
+      volume: 100,
+      closeTime: 12346,
+      quoteVolume: 150,
+      count: 10,
+      takerBuyVol: 50,
+      takerBuyQuoteVol: 75,
+      ignore: 0,
+    };
+    expect(k.closeTime).toBeGreaterThan(k.openTime);
+  });
+});
+

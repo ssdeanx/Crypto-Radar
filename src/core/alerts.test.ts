@@ -2,9 +2,9 @@
 // Hermes Crypto Radar — Price Alert Engine Tests
 // ═══════════════════════════════════════════════════════════════════════
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { checkAlerts, formatAlerts, resetAlertState } from './alerts.js';
-import type { AlertResult, PriceAlert } from './alerts.js';
+import type { AlertResult } from './alerts.js';
 import { makeTicker } from '../shared-test-helpers.js';
 
 // Mock config so loadConfig returns controlled data
@@ -13,6 +13,8 @@ vi.mock('./config.js', () => ({
 }));
 
 import { loadConfig } from './config.js';
+import type { RadarConfig } from './config.js';
+
 const mockLoadConfig = vi.mocked(loadConfig);
 
 describe('checkAlerts', () => {
@@ -22,13 +24,13 @@ describe('checkAlerts', () => {
   });
 
   it('returns empty array when no alerts configured', () => {
-    mockLoadConfig.mockReturnValue({ alerts: [] } as any);
+    mockLoadConfig.mockReturnValue({ alerts: [] } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC' })]);
     expect(result).toEqual([]);
   });
 
   it('returns empty when config.alerts is undefined', () => {
-    mockLoadConfig.mockReturnValue({} as any);
+    mockLoadConfig.mockReturnValue({} as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC' })]);
     expect(result).toEqual([]);
   });
@@ -36,7 +38,7 @@ describe('checkAlerts', () => {
   it('triggers alert when price is above threshold', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'above', value: 50000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 60000 })]);
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -51,7 +53,7 @@ describe('checkAlerts', () => {
   it('does not trigger when price is below threshold for above condition', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'above', value: 70000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 60000 })]);
     expect(result).toEqual([]);
   });
@@ -59,7 +61,7 @@ describe('checkAlerts', () => {
   it('triggers alert when price is below threshold', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'below', value: 50000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 40000 })]);
     expect(result).toHaveLength(1);
     expect(result[0].condition).toBe('below');
@@ -69,7 +71,7 @@ describe('checkAlerts', () => {
   it('does not trigger when price is above threshold for below condition', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'below', value: 40000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 50000 })]);
     expect(result).toEqual([]);
   });
@@ -78,7 +80,7 @@ describe('checkAlerts', () => {
     // openPrice=99, lastPrice=100 => changePct ≈ 1.01%, threshold 1% => triggers
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'change_pct', value: 1 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([
       makeTicker({ symbol: 'BTC', lastPrice: 100, openPrice: 99 }),
     ]);
@@ -89,7 +91,7 @@ describe('checkAlerts', () => {
   it('does not re-trigger an already fired alert (state persistence)', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'above', value: 50000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     // First call — triggers
     expect(checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 60000 })])).toHaveLength(1);
     // Second call — same price still above, should NOT re-trigger
@@ -99,7 +101,7 @@ describe('checkAlerts', () => {
   it('re-triggers after price drops back then exceeds threshold again', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'above', value: 50000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     // Initial trigger
     checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 60000 })]);
     // Drop below — resets state
@@ -112,7 +114,7 @@ describe('checkAlerts', () => {
   it('skips tokens not present in ticker data', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'UNKNOWN', condition: 'above', value: 1 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 60000 })]);
     expect(result).toEqual([]);
   });
@@ -120,7 +122,7 @@ describe('checkAlerts', () => {
   it('uses default message when no custom message is provided', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'SOL', condition: 'above', value: 200 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'SOL', lastPrice: 250 })]);
     expect(result[0].message).toContain('SOL');
     expect(result[0].message).toContain('above');
@@ -132,7 +134,7 @@ describe('checkAlerts', () => {
       alerts: [
         { symbol: 'SOL', condition: 'above', value: 200, message: 'Solana moon!' },
       ],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     const result = checkAlerts([makeTicker({ symbol: 'SOL', lastPrice: 250 })]);
     expect(result[0].message).toBe('Solana moon!');
   });
@@ -189,7 +191,7 @@ describe('resetAlertState', () => {
   it('clears internal state and allows re-triggering', () => {
     mockLoadConfig.mockReturnValue({
       alerts: [{ symbol: 'BTC', condition: 'above', value: 50000 }],
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     // Trigger once
     checkAlerts([makeTicker({ symbol: 'BTC', lastPrice: 60000 })]);
     // Reset

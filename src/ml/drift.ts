@@ -93,7 +93,7 @@ export async function detectDrift(
 
   try {
     // Get recent predictions from store
-    const predictions = store.getPredictions({ limit: maxRecords });
+    const predictions = await store.getPredictions({ limit: maxRecords });
     if (predictions.length < 10) {
       log.debug(`Drift detection skipped: only ${predictions.length} predictions available (need ≥10)`);
       return emptyReport;

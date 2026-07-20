@@ -25,6 +25,9 @@ if [ -f "$REQUIREMENTS" ]; then
   uv pip install --requirement "$REQUIREMENTS" --python "$VENV_DIR"
 fi
 
+# Install Python code quality tools
+"$UV" pip install mypy ruff
+
 echo ""
 echo "  ✅ ML environment ready"
 echo "     Venv: $VENV_DIR"

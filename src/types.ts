@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Blockchain chain identifier */
-export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'near' | 'tron' | 'stellar' | 'avalanche' | 'litecoin' | 'bitcoin-cash' | 'hedera' | 'bittensor' | 'polkadot' | 'filecoin' | 'zcash' | 'monero' | 'algorand' | 'tezos' | 'theta' | 'multi';
+export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'bitcoin-cash' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'near' | 'tron' | 'stellar' | 'avalanche' | 'litecoin' | 'hedera' | 'bittensor' | 'polkadot' | 'filecoin' | 'zcash' | 'monero' | 'algorand' | 'tezos' | 'theta' | 'multi' | 'dash' | 'neo' | 'icp' | 'ethereum-classic';
 
 /** Supported output formats */
 export type OutputFormat = 'csv' | 'json' | 'md' | 'table' | 'xlsx';
@@ -148,6 +148,22 @@ export interface EnrichedTicker {
   // ── Market Regime ──
   regime?: string;
   regimeConfidence?: number;
+
+  // ── 7-Day Rolling Window (Binance windowSize=7d) ──
+  /** 7-day price change percentage */
+  priceChangePct7d?: number;
+  /** Weighted average price over 7-day window */
+  weightedAvgPrice7d?: number;
+  /** 7-day high price */
+  highPrice7d?: number;
+  /** 7-day low price */
+  lowPrice7d?: number;
+  /** 7-day total volume */
+  volume7d?: number;
+  /** 7-day total quote volume */
+  quoteVolume7d?: number;
+  /** 7-day price range as percentage of high ((high-low)/high) */
+  rangeWidth7d?: number;
 }
 
 export interface StochasticResult {
@@ -289,6 +305,8 @@ export interface NewsMatch {
   domain: string;
   relevance: number;
   url: string;
+  /** Source feed tier (1–4) — used for dedup quality ranking */
+  tier?: number;
 }
 
 /** Breakdown of individual signal strategy contributions */

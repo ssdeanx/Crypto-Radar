@@ -45,7 +45,15 @@ async function runCli(
       execFile(
         'node',
         [CLI_PATH, ...args],
-        { timeout, encoding: 'utf-8', maxBuffer: 10 * 1024 * 1024 },
+        {
+          timeout,
+          encoding: 'utf-8',
+          maxBuffer: 10 * 1024 * 1024,
+          env: {
+            ...process.env,
+            RADAR__DATA_DIR: process.env.RADAR__DATA_DIR || resolve(__dirname, '../data/test-run'),
+          },
+        },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (error: any, stdout: string, stderr: string) => {
           if (error) {

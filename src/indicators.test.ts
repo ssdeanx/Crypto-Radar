@@ -8,13 +8,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   sma, ema, emaSeries,
-  computeRSI, computeMFI, computeMACD, computeBB, computeATR, computeVolTrend,
-  computeOBV, computeVolVsAvg,
+  computeRSI, computeMACD, computeBB, computeATR, computeVolTrend,
   computeStochastic, computeIchimoku, computeWilliamsR, computeCMF, computeTSI,
   computeADX,
   computePSAR, computeCCI, computeKeltner, computeROC, computeVWAP,
   computeForceIndex, computeADL, computeChaikinOsc, computeStochRSI,
   computeTRIX, computeKST, computeElderRay, computeFisher, computeMassIndex,
+  computeMFI, computeOBV, computeVolVsAvg,
   computeAllIndicators,
 } from './indicators.js';
 import type { Kline } from './types.js';
@@ -43,22 +43,23 @@ const MFI_LOWS  = [44, 45, 46, 47, 46, 45, 46, 47, 48, 47, 46, 45, 44, 45, 46, 4
 const MFI_CLOSES = [45, 46, 47, 48, 47, 46, 47, 48, 49, 48, 47, 46, 45, 46, 47, 48, 49, 50, 49, 48];
 const MFI_VOLS   = [1000, 1100, 1200, 1300, 1200, 1100, 1200, 1300, 1400, 1300, 1200, 1100, 1000, 1100, 1200, 1300, 1400, 1500, 1400, 1300];
 
+
 // ── SMA ──
 
 describe('SMA', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(sma([1, 2], 3)).toBeNull();
   });
 
-  it('computes SMA for exact period', () => {
+  it('computes SMA for exact period', async () => {
     expect(sma([10, 20, 30], 3)).toBe(20);
   });
 
-  it('computes SMA with extra data beyond period', () => {
+  it('computes SMA with extra data beyond period', async () => {
     expect(sma(LINEAR_5, 3)).toBe(40); // last 3: 30, 40, 50 => 120/3 = 40
   });
 
-  it('handles single value period', () => {
+  it('handles single value period', async () => {
     expect(sma([5, 10, 15], 1)).toBe(15);
   });
 });
@@ -66,11 +67,11 @@ describe('SMA', () => {
 // ── EMA ──
 
 describe('EMA', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(ema([1, 2], 3)).toBeNull();
   });
 
-  it('computes EMA', () => {
+  it('computes EMA', async () => {
     const result = ema([22, 23, 24, 25, 26, 27, 28, 29, 30, 31], 5);
     // SMA of first 5: (22+23+24+25+26)/5 = 24
     // then EMA formula with k=2/(5+1)=0.333...
@@ -81,12 +82,12 @@ describe('EMA', () => {
 });
 
 describe('emaSeries', () => {
-  it('returns nulls for insufficient data', () => {
+  it('returns nulls for insufficient data', async () => {
     const result = emaSeries([1, 2], 5);
     expect(result.every(v => v === null)).toBe(true);
   });
 
-  it('computes full EMA series', () => {
+  it('computes full EMA series', async () => {
     const result = emaSeries(LINEAR_5, 3);
     // First 3 SMA: (10+20+30)/3 = 20 at index 2
     expect(result[2]).toBe(20);
@@ -100,11 +101,11 @@ describe('emaSeries', () => {
 // ── RSI ──
 
 describe('RSI', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeRSI([44, 45], 14)).toBeNull();
   });
 
-  it('computes RSI for known bullish sequence', () => {
+  it('computes RSI for known bullish sequence', async () => {
     const rsi = computeRSI(RSI_CLOSES, 14);
     expect(rsi).not.toBeNull();
     // Expected range for this sequence: ~55-70 (moderately bullish)
@@ -112,12 +113,12 @@ describe('RSI', () => {
     expect(rsi!).toBeLessThan(80);
   });
 
-  it('returns 100 when no losses', () => {
+  it('returns 100 when no losses', async () => {
     const rsi = computeRSI([10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24], 14);
     expect(rsi).toBe(100);
   });
 
-  it('returns 0 when no gains', () => {
+  it('returns 0 when no gains', async () => {
     const rsi = computeRSI([24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10], 14);
     expect(rsi).toBe(0);
   });
@@ -126,14 +127,14 @@ describe('RSI', () => {
 // ── MACD ──
 
 describe('MACD', () => {
-  it('returns null fields for insufficient data', () => {
+  it('returns null fields for insufficient data', async () => {
     const result = computeMACD([1, 2, 3]);
     expect(result.macd).toBeNull();
     expect(result.signal).toBeNull();
     expect(result.histogram).toBeNull();
   });
 
-  it('computes MACD for sufficient data', () => {
+  it('computes MACD for sufficient data', async () => {
     const result = computeMACD(MACD_CLOSES);
     expect(result.macd).not.toBeNull();
     expect(result.signal).not.toBeNull();
@@ -146,11 +147,11 @@ describe('MACD', () => {
 // ── Bollinger Bands ──
 
 describe('Bollinger Bands', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeBB([1, 2], 20)).toBeNull();
   });
 
-  it('computes BB for basic data', () => {
+  it('computes BB for basic data', async () => {
     const bb = computeBB([10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 46, 48, 50], 20);
     expect(bb).not.toBeNull();
     expect(bb!.upper).toBeGreaterThan(bb!.middle);
@@ -160,7 +161,7 @@ describe('Bollinger Bands', () => {
     expect(bb!.position).toBeLessThanOrEqual(1);
   });
 
-  it('has width proportional to volatility', () => {
+  it('has width proportional to volatility', async () => {
     const stableBB = computeBB([50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50], 20);
     const volatileBB = computeBB([40, 42, 38, 44, 36, 46, 34, 48, 32, 50, 30, 52, 28, 54, 26, 56, 24, 58, 22, 60], 20);
     expect(stableBB).not.toBeNull();
@@ -172,11 +173,11 @@ describe('Bollinger Bands', () => {
 // ── ATR ──
 
 describe('ATR', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeATR([46], [44], [45], 14)).toBeNull();
   });
 
-  it('computes ATR percentage', () => {
+  it('computes ATR percentage', async () => {
     const atr = computeATR(MFI_HIGHS, MFI_LOWS, MFI_CLOSES, 14);
     expect(atr).not.toBeNull();
     expect(atr!).toBeGreaterThan(0);
@@ -187,11 +188,11 @@ describe('ATR', () => {
 // ── Volume Trend ──
 
 describe('Volume Trend', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeVolTrend([1, 2, 3])).toBeNull();
   });
 
-  it('computes volume trend ratio', () => {
+  it('computes volume trend ratio', async () => {
     // Last 7 values higher than prior 7 -> positive trend
     const rising = [
       100, 100, 100, 100, 100, 100, 100,  // older
@@ -200,12 +201,57 @@ describe('Volume Trend', () => {
     expect(computeVolTrend(rising)).toBeCloseTo(1.0, 1); // 200/100 - 1 = 1.0
   });
 
-  it('detects declining volume', () => {
+  it('detects declining volume', async () => {
     const declining = [
       200, 200, 200, 200, 200, 200, 200,
       100, 100, 100, 100, 100, 100, 100,
     ];
     expect(computeVolTrend(declining)).toBeCloseTo(-0.5, 1); // 100/200 - 1 = -0.5
+  });
+});
+
+// ── MFI ──
+
+describe('MFI (Money Flow Index)', () => {
+  it('returns null for insufficient data', async () => {
+    expect(computeMFI([1], [1], [1], [1], 14)).toBeNull();
+  });
+
+  it('computes MFI with sufficient data', async () => {
+    const mfi = computeMFI(MFI_HIGHS, MFI_LOWS, MFI_CLOSES, MFI_VOLS, 14);
+    expect(mfi).not.toBeNull();
+    expect(mfi!).toBeGreaterThanOrEqual(0);
+    expect(mfi!).toBeLessThanOrEqual(100);
+  });
+});
+
+// ── OBV ──
+
+describe('OBV (On-Balance Volume)', () => {
+  it('returns null for insufficient data', async () => {
+    expect(computeOBV([1], [1])).toBeNull();
+  });
+
+  it('computes OBV with sufficient data', async () => {
+    const obv = computeOBV(MFI_CLOSES, MFI_VOLS);
+    expect(obv).not.toBeNull();
+    expect(typeof obv!).toBe('number');
+  });
+});
+
+// ── VolVsAvg ──
+
+describe('VolVsAvg', () => {
+  it('returns null for insufficient data', async () => {
+    expect(computeVolVsAvg([1, 2, 3])).toBeNull();
+  });
+
+  it('computes VolVsAvg with sufficient data', async () => {
+    const vols = new Array(25).fill(1000);
+    vols[24] = 1500;
+    const volVsAvg = computeVolVsAvg(vols);
+    expect(volVsAvg).not.toBeNull();
+    expect(volVsAvg!).toBe(0.5); // 1500 / 1000 - 1 = 0.5
   });
 });
 
@@ -229,11 +275,11 @@ describe('computeAllIndicators', () => {
     }));
   }
 
-  it('computes all indicators from kline data', () => {
+  it('computes all indicators from kline data', async () => {
     // Need at least 50+ data points for EMA50
     const closes = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i * 0.2) * 10);
     const klines = makeKlines(closes);
-    const result = computeAllIndicators(klines);
+    const result = await computeAllIndicators(klines);
 
     expect(result.rsi).not.toBeNull();
     expect(result.mfi).not.toBeNull();
@@ -244,15 +290,15 @@ describe('computeAllIndicators', () => {
     expect(result.priceVsEma50).not.toBeNull();
   });
 
-  it('returns null fields for insufficient data', () => {
+  it('returns null fields for insufficient data', async () => {
     const closes = [100, 101, 102]; // only 3 data points
     const klines = makeKlines(closes);
-    const result = computeAllIndicators(klines);
+    const result = await computeAllIndicators(klines);
 
     expect(result.rsi).toBeNull();
     expect(result.mfi).toBeNull();
     expect(result.bb).toBeNull();
-    expect(result.macd.macd).toBeNull();
+    expect(result.macd!.macd).toBeNull();
     expect(result.priceVsEma50).toBeNull();
   });
 });
@@ -264,13 +310,13 @@ describe('Stochastic Oscillator', () => {
   const STOCH_LOWS  = [44, 45, 46, 47, 46, 45, 46, 47, 48, 47, 46, 45, 44, 45, 46, 47, 48, 49, 48, 47];
   const STOCH_CLOSES = [45, 46, 47, 48, 47, 46, 47, 48, 49, 48, 47, 46, 45, 46, 47, 48, 49, 50, 49, 48];
 
-  it('returns nulls for insufficient data', () => {
+  it('returns nulls for insufficient data', async () => {
     const result = computeStochastic([1], [1], [1], 14);
     expect(result.k).toBeNull();
     expect(result.d).toBeNull();
   });
 
-  it('computes K and D with sufficient data', () => {
+  it('computes K and D with sufficient data', async () => {
     const result = computeStochastic(STOCH_HIGHS, STOCH_LOWS, STOCH_CLOSES, 14);
     expect(result.k).not.toBeNull();
     expect(result.d).not.toBeNull();
@@ -280,7 +326,7 @@ describe('Stochastic Oscillator', () => {
     expect(result.d!).toBeLessThanOrEqual(100);
   });
 
-  it('handles zero-range (flat price) gracefully', () => {
+  it('handles zero-range (flat price) gracefully', async () => {
     const flat50 = new Array(18).fill(50);
     const result = computeStochastic(flat50, flat50, flat50, 14);
     expect(result.k).not.toBeNull();
@@ -297,7 +343,7 @@ describe('Ichimoku Cloud', () => {
   const ICHI_LOWS   = [44, 45, 46, 47, 46, 45, 46, 47, 48, 47, 46, 45, 44, 45, 46, 47, 48, 49, 48, 47, 48, 49, 50, 49, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76];
   const ICHI_CLOSES = [45, 46, 47, 48, 47, 46, 47, 48, 49, 48, 47, 46, 45, 46, 47, 48, 49, 50, 49, 48, 49, 50, 51, 50, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77];
 
-  it('returns nulls for insufficient data', () => {
+  it('returns nulls for insufficient data', async () => {
     const result = computeIchimoku([1], [1], [1], 9, 26);
     expect(result.conversionLine).toBeNull();
     expect(result.baseLine).toBeNull();
@@ -305,7 +351,7 @@ describe('Ichimoku Cloud', () => {
     expect(result.spanB).toBeNull();
   });
 
-  it('computes all lines with sufficient data', () => {
+  it('computes all lines with sufficient data', async () => {
     const result = computeIchimoku(ICHI_HIGHS, ICHI_LOWS, ICHI_CLOSES, 9, 26, 52);
     expect(result.conversionLine).not.toBeNull();
     expect(result.baseLine).not.toBeNull();
@@ -318,7 +364,7 @@ describe('Ichimoku Cloud', () => {
     expect(result.laggingSpan!).toBe(ICHI_CLOSES[laggingIndex]);
   });
 
-  it('returns null spanB when data insufficient for spanBPeriod', () => {
+  it('returns null spanB when data insufficient for spanBPeriod', async () => {
     const shortData = { highs: ICHI_HIGHS.slice(0, 30), lows: ICHI_LOWS.slice(0, 30), closes: ICHI_CLOSES.slice(0, 30) };
     const result = computeIchimoku(shortData.highs, shortData.lows, shortData.closes, 9, 26, 52);
     expect(result.conversionLine).not.toBeNull();
@@ -336,18 +382,18 @@ describe('Williams %R', () => {
   const WILL_LOWS   = [44, 45, 46, 47, 46, 45, 46, 47, 48, 47, 46, 45, 44, 45, 46, 47, 48, 49, 48, 47];
   const WILL_CLOSES = [45, 46, 47, 48, 47, 46, 47, 48, 49, 48, 47, 46, 45, 46, 47, 48, 49, 50, 49, 48];
 
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeWilliamsR([1], [1], [1], 14)).toBeNull();
   });
 
-  it('computes Williams %R with sufficient data', () => {
+  it('computes Williams %R with sufficient data', async () => {
     const wr = computeWilliamsR(WILL_HIGHS, WILL_LOWS, WILL_CLOSES, 14);
     expect(wr).not.toBeNull();
     expect(wr!).toBeGreaterThanOrEqual(-100);
     expect(wr!).toBeLessThanOrEqual(0);
   });
 
-  it('returns -50 for flat price (zero range)', () => {
+  it('returns -50 for flat price (zero range)', async () => {
     const wr = computeWilliamsR(
       [50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
       [50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50, 50],
@@ -357,7 +403,7 @@ describe('Williams %R', () => {
     expect(wr).toBe(-50);
   });
 
-  it('detects overbought condition (near high)', () => {
+  it('detects overbought condition (near high)', async () => {
     const wr = computeWilliamsR(
       [40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 40, 50, 50],
       [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
@@ -377,18 +423,18 @@ describe('CMF (Chaikin Money Flow)', () => {
   const CMF_CLOSES = [45, 46, 47, 48, 47, 46, 47, 48, 49, 48, 47, 46, 45, 46, 47, 48, 49, 50, 49, 48];
   const CMF_VOLS   = [1000, 1100, 1200, 1300, 1200, 1100, 1200, 1300, 1400, 1300, 1200, 1100, 1000, 1100, 1200, 1300, 1400, 1500, 1400, 1300];
 
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeCMF([1], [1], [1], [1], 20)).toBeNull();
   });
 
-  it('computes CMF with sufficient data', () => {
+  it('computes CMF with sufficient data', async () => {
     const cmf = computeCMF(CMF_HIGHS, CMF_LOWS, CMF_CLOSES, CMF_VOLS, 20);
     expect(cmf).not.toBeNull();
     expect(cmf!).toBeGreaterThanOrEqual(-1);
     expect(cmf!).toBeLessThanOrEqual(1);
   });
 
-  it('returns 0 with zero volume', () => {
+  it('returns 0 with zero volume', async () => {
     const cmf = computeCMF(CMF_HIGHS, CMF_LOWS, CMF_CLOSES, new Array(20).fill(0), 20);
     expect(cmf).toBe(0);
   });
@@ -401,23 +447,23 @@ describe('TSI (True Strength Index)', () => {
   const TSI_UPTREND: number[] = [];
   for (let i = 0; i < 60; i++) TSI_UPTREND.push(100 + i * 0.5 + Math.sin(i * 0.3) * 2);
 
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeTSI([1, 2, 3], 25, 13)).toBeNull();
   });
 
-  it('returns positive TSI for uptrend', () => {
+  it('returns positive TSI for uptrend', async () => {
     const tsi = computeTSI(TSI_UPTREND, 25, 13);
     expect(tsi).not.toBeNull();
     expect(tsi!).toBeGreaterThan(0);
   });
 
-  it('returns 0 for flat price (zero momentum)', () => {
+  it('returns 0 for flat price (zero momentum)', async () => {
     const flat = new Array(50).fill(100);
     const tsi = computeTSI(flat, 25, 13);
     expect(tsi).toBe(0);
   });
 
-  it('returns negative TSI for downtrend', () => {
+  it('returns negative TSI for downtrend', async () => {
     const downtrend: number[] = [];
     for (let i = 0; i < 60; i++) downtrend.push(100 - i * 0.5 + Math.sin(i * 0.3) * 2);
     const tsi = computeTSI(downtrend, 25, 13);
@@ -446,10 +492,10 @@ describe('computeAllIndicators extended', () => {
     }));
   }
 
-  it('includes new indicators with sufficient data', () => {
+  it('includes new indicators with sufficient data', async () => {
     const closes = Array.from({ length: 80 }, (_, i) => 100 + Math.sin(i * 0.2) * 10);
     const klines = makeKlines(closes);
-    const result = computeAllIndicators(klines);
+    const result = await computeAllIndicators(klines);
 
     expect(result.stochastic).not.toBeNull();
     expect(result.stochastic!.k).not.toBeNull();
@@ -466,10 +512,10 @@ describe('computeAllIndicators extended', () => {
     expect(result.tsi).not.toBeNull();
   });
 
-  it('returns null new-indicator fields for insufficient data', () => {
+  it('returns null new-indicator fields for insufficient data', async () => {
     const closes = [100, 101, 102];
     const klines = makeKlines(closes);
-    const result = computeAllIndicators(klines);
+    const result = await computeAllIndicators(klines);
 
     expect(result.stochastic?.k).toBeNull();
     expect(result.ichimoku?.conversionLine).toBeNull();
@@ -493,18 +539,18 @@ const NEW_VOLS = [1000, 1100, 1200, 1300, 1200, 1100, 1200, 1300, 1400, 1300, 12
 // ── ADX ──
 
 describe('ADX', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeADX([1], [1], [1], 14)).toBeNull();
   });
 
-  it('computes ADX with sufficient data', () => {
+  it('computes ADX with sufficient data', async () => {
     const adx = computeADX(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, 14);
     expect(adx).not.toBeNull();
     expect(adx!).toBeGreaterThanOrEqual(0);
     expect(adx!).toBeLessThanOrEqual(100);
   });
 
-  it('returns a number for trending data', () => {
+  it('returns a number for trending data', async () => {
     // Uptrending data should produce ADX > 0
     const highs = Array.from({ length: 40 }, (_, i) => 100 + i + Math.sin(i) * 2);
     const lows  = Array.from({ length: 40 }, (_, i) => 98 + i + Math.sin(i) * 2);
@@ -518,11 +564,11 @@ describe('ADX', () => {
 // ── PSAR ──
 
 describe('Parabolic SAR', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computePSAR([1, 2], [1, 2], [1, 2])).toBeNull();
   });
 
-  it('returns a valid result with sufficient data', () => {
+  it('returns a valid result with sufficient data', async () => {
     const psar = computePSAR(NEW_HIGHS, NEW_LOWS, NEW_CLOSES);
     expect(psar).not.toBeNull();
     expect(psar!.sar).toBeGreaterThan(0);
@@ -531,7 +577,7 @@ describe('Parabolic SAR', () => {
     expect(typeof psar!.isReversal).toBe('boolean');
   });
 
-  it('identifies trend direction', () => {
+  it('identifies trend direction', async () => {
     // Strongly uptrending data
     const highs = Array.from({ length: 30 }, (_, i) => 100 + i * 2);
     const lows = Array.from({ length: 30 }, (_, i) => 99 + i * 2);
@@ -545,17 +591,17 @@ describe('Parabolic SAR', () => {
 // ── CCI ──
 
 describe('CCI (Commodity Channel Index)', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeCCI([1], [1], [1], 20)).toBeNull();
   });
 
-  it('computes CCI with sufficient data', () => {
+  it('computes CCI with sufficient data', async () => {
     const cci = computeCCI(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, 20);
     expect(cci).not.toBeNull();
     expect(typeof cci!).toBe('number');
   });
 
-  it('returns 0 for zero mean deviation (flat price)', () => {
+  it('returns 0 for zero mean deviation (flat price)', async () => {
     const flat = new Array(25).fill(50);
     const cci = computeCCI(flat, flat, flat, 20);
     expect(cci).toBe(0);
@@ -565,11 +611,11 @@ describe('CCI (Commodity Channel Index)', () => {
 // ── Keltner Channels ──
 
 describe('Keltner Channels', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeKeltner([1], [1], [1], 20)).toBeNull();
   });
 
-  it('computes Keltner Channels with sufficient data', () => {
+  it('computes Keltner Channels with sufficient data', async () => {
     const k = computeKeltner(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, 20);
     expect(k).not.toBeNull();
     expect(k!.upper).toBeGreaterThan(k!.middle);
@@ -577,7 +623,7 @@ describe('Keltner Channels', () => {
     expect(k!.width).toBeGreaterThan(0);
   });
 
-  it('has position between 0 and 1 (or close to bands)', () => {
+  it('has position between 0 and 1 (or close to bands)', async () => {
     const k = computeKeltner(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, 20);
     expect(k).not.toBeNull();
     // Position may be slightly outside [0,1] if price is above/below bands
@@ -588,25 +634,25 @@ describe('Keltner Channels', () => {
 // ── ROC ──
 
 describe('ROC (Rate of Change)', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeROC([1, 2], 12)).toBeNull();
   });
 
-  it('computes positive ROC for uptrend', () => {
+  it('computes positive ROC for uptrend', async () => {
     const data = Array.from({ length: 20 }, (_, i) => 100 + i);
     const roc = computeROC(data, 12);
     expect(roc).not.toBeNull();
     expect(roc!).toBeGreaterThan(0);
   });
 
-  it('computes negative ROC for downtrend', () => {
+  it('computes negative ROC for downtrend', async () => {
     const data = Array.from({ length: 20 }, (_, i) => 200 - i);
     const roc = computeROC(data, 12);
     expect(roc).not.toBeNull();
     expect(roc!).toBeLessThan(0);
   });
 
-  it('returns 0 for flat price', () => {
+  it('returns 0 for flat price', async () => {
     const data = new Array(20).fill(100);
     const roc = computeROC(data, 12);
     expect(roc).toBe(0);
@@ -616,17 +662,17 @@ describe('ROC (Rate of Change)', () => {
 // ── VWAP ──
 
 describe('VWAP', () => {
-  it('returns null for empty data', () => {
+  it('returns null for empty data', async () => {
     expect(computeVWAP([], [], [], [])).toBeNull();
   });
 
-  it('computes VWAP with valid data', () => {
+  it('computes VWAP with valid data', async () => {
     const vwap = computeVWAP(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, NEW_VOLS);
     expect(vwap).not.toBeNull();
     expect(vwap!).toBeGreaterThan(0);
   });
 
-  it('returns null when all volumes are zero', () => {
+  it('returns null when all volumes are zero', async () => {
     const vwap = computeVWAP([10, 20], [5, 15], [7, 17], [0, 0]);
     expect(vwap).toBeNull();
   });
@@ -635,17 +681,17 @@ describe('VWAP', () => {
 // ── Force Index ──
 
 describe('Force Index', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeForceIndex([1, 2], [100, 200], 13)).toBeNull();
   });
 
-  it('computes Force Index with sufficient data', () => {
+  it('computes Force Index with sufficient data', async () => {
     const fi = computeForceIndex(NEW_CLOSES, NEW_VOLS, 13);
     expect(fi).not.toBeNull();
     expect(typeof fi!).toBe('number');
   });
 
-  it('returns positive for strong uptrend', () => {
+  it('returns positive for strong uptrend', async () => {
     const closes = Array.from({ length: 20 }, (_, i) => 100 + i);
     const volumes = Array.from({ length: 20 }, (_, i) => 1000 + i * 100);
     const fi = computeForceIndex(closes, volumes, 13);
@@ -657,11 +703,11 @@ describe('Force Index', () => {
 // ── ADL ──
 
 describe('ADL (Accumulation/Distribution Line)', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeADL([1], [1], [1], [100])).toBeNull();
   });
 
-  it('computes ADL with valid data', () => {
+  it('computes ADL with valid data', async () => {
     const adl = computeADL(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, NEW_VOLS);
     expect(adl).not.toBeNull();
     expect(typeof adl!).toBe('number');
@@ -671,11 +717,11 @@ describe('ADL (Accumulation/Distribution Line)', () => {
 // ── Chaikin Oscillator ──
 
 describe('Chaikin Oscillator', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeChaikinOsc([1], [1], [1], [100])).toBeNull();
   });
 
-  it('computes Chaikin Osc with sufficient data', () => {
+  it('computes Chaikin Osc with sufficient data', async () => {
     const chaikin = computeChaikinOsc(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, NEW_VOLS);
     expect(chaikin).not.toBeNull();
     expect(typeof chaikin!).toBe('number');
@@ -685,28 +731,28 @@ describe('Chaikin Oscillator', () => {
 // ── StochRSI ──
 
 describe('StochRSI', () => {
-  it('returns nulls for insufficient data', () => {
+  it('returns nulls for insufficient data', async () => {
     const result = computeStochRSI([1, 2, 3], 14, 14);
-    expect(result.stochRsi).toBeNull();
-    expect(result.k).toBeNull();
-    expect(result.d).toBeNull();
+    expect(result!.stochRsi).toBeNull();
+    expect(result!.k).toBeNull();
+    expect(result!.d).toBeNull();
   });
 
-  it('computes StochRSI with sufficient data', () => {
+  it('computes StochRSI with sufficient data', async () => {
     const result = computeStochRSI(NEW_CLOSES, 14, 14);
-    expect(result.stochRsi).not.toBeNull();
-    expect(result.stochRsi!).toBeGreaterThanOrEqual(0);
-    expect(result.stochRsi!).toBeLessThanOrEqual(1);
+    expect(result!.stochRsi).not.toBeNull();
+    expect(result!.stochRsi!).toBeGreaterThanOrEqual(0);
+    expect(result!.stochRsi!).toBeLessThanOrEqual(1);
   });
 
-  it('computes K and D values', () => {
+  it('computes K and D values', async () => {
     // Need more data for K and D smoothing
     const data = Array.from({ length: 80 }, (_, i) => 100 + Math.sin(i * 0.3) * 10);
     const result = computeStochRSI(data, 14, 14, 3, 3);
-    expect(result.k).not.toBeNull();
-    if (result.d !== null) {
-      expect(result.d).toBeGreaterThanOrEqual(0);
-      expect(result.d).toBeLessThanOrEqual(100);
+    expect(result!.k).not.toBeNull();
+    if (result!.d !== null) {
+      expect(result!.d).toBeGreaterThanOrEqual(0);
+      expect(result!.d).toBeLessThanOrEqual(100);
     }
   });
 });
@@ -714,18 +760,18 @@ describe('StochRSI', () => {
 // ── TRIX ──
 
 describe('TRIX', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeTRIX([1, 2, 3], 15)).toBeNull();
   });
 
-  it('computes positive TRIX for uptrend', () => {
+  it('computes positive TRIX for uptrend', async () => {
     const data = Array.from({ length: 60 }, (_, i) => 100 + i * 0.5);
     const trix = computeTRIX(data, 15);
     expect(trix).not.toBeNull();
     expect(trix!).toBeGreaterThan(0);
   });
 
-  it('computes negative TRIX for downtrend', () => {
+  it('computes negative TRIX for downtrend', async () => {
     const data = Array.from({ length: 60 }, (_, i) => 200 - i * 0.5);
     const trix = computeTRIX(data, 15);
     expect(trix).not.toBeNull();
@@ -736,34 +782,34 @@ describe('TRIX', () => {
 // ── KST ──
 
 describe('KST (Know Sure Thing)', () => {
-  it('returns default for insufficient data', () => {
+  it('returns default for insufficient data', async () => {
     const result = computeKST([1, 2, 3]);
-    expect(result.kst).toBe(0);
-    expect(result.signal).toBeNull();
+    expect(result!.kst).toBe(0);
+    expect(result!.signal).toBeNull();
   });
 
-  it('computes KST with sufficient data', () => {
+  it('computes KST with sufficient data', async () => {
     const data = Array.from({ length: 80 }, (_, i) => 100 + Math.sin(i * 0.2) * 10);
     const result = computeKST(data);
-    expect(typeof result.kst).toBe('number');
+    expect(typeof result!.kst).toBe('number');
   });
 });
 
 // ── Elder Ray ──
 
 describe('Elder Ray Index', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeElderRay([1], [1], [1], 13)).toBeNull();
   });
 
-  it('computes Elder Ray with sufficient data', () => {
+  it('computes Elder Ray with sufficient data', async () => {
     const ray = computeElderRay(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, 13);
     expect(ray).not.toBeNull();
     expect(typeof ray!.bullPower).toBe('number');
     expect(typeof ray!.bearPower).toBe('number');
   });
 
-  it('shows higher bullPower in uptrend', () => {
+  it('shows higher bullPower in uptrend', async () => {
     const highs = Array.from({ length: 20 }, (_, i) => 102 + i);
     const lows = Array.from({ length: 20 }, (_, i) => 98 + i);
     const closes = Array.from({ length: 20 }, (_, i) => 100 + i);
@@ -777,17 +823,17 @@ describe('Elder Ray Index', () => {
 // ── Fisher Transform ──
 
 describe('Fisher Transform', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeFisher([1], [1], [1], 10)).toBeNull();
   });
 
-  it('computes Fisher with sufficient data', () => {
+  it('computes Fisher with sufficient data', async () => {
     const f = computeFisher(NEW_HIGHS, NEW_LOWS, NEW_CLOSES, 10);
     expect(f).not.toBeNull();
     expect(typeof f!).toBe('number');
   });
 
-  it('returns positive for strong uptrend', () => {
+  it('returns positive for strong uptrend', async () => {
     const highs = Array.from({ length: 20 }, (_, i) => 100 + i * 2);
     const lows = Array.from({ length: 20 }, (_, i) => 98 + i * 2);
     const closes = Array.from({ length: 20 }, (_, i) => 99 + i * 2);
@@ -800,11 +846,11 @@ describe('Fisher Transform', () => {
 // ── Mass Index ──
 
 describe('Mass Index', () => {
-  it('returns null for insufficient data', () => {
+  it('returns null for insufficient data', async () => {
     expect(computeMassIndex([1, 2, 3], [0, 1, 2], 25)).toBeNull();
   });
 
-  it('computes Mass Index with sufficient data', () => {
+  it('computes Mass Index with sufficient data', async () => {
     const highs = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i * 0.5) * 10);
     const lows = Array.from({ length: 60 }, (_, i) => 95 + Math.sin(i * 0.5) * 10);
     const mi = computeMassIndex(highs, lows, 25);
@@ -812,7 +858,7 @@ describe('Mass Index', () => {
     expect(mi!).toBeGreaterThan(0);
   });
 
-  it('returns a reasonable value for volatile data', () => {
+  it('returns a reasonable value for volatile data', async () => {
     const highs = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i * 0.3) * 15 + Math.sin(i * 0.7) * 5);
     const lows = Array.from({ length: 60 }, (_, i) => 95 + Math.sin(i * 0.3) * 15 + Math.sin(i * 0.7) * 5);
     const mi = computeMassIndex(highs, lows, 25);

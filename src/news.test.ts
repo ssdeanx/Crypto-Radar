@@ -13,6 +13,10 @@ describe('News Fetcher', () => {
     mockFetch.mockReset();
   });
 
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('returns empty array when all feeds fail', async () => {
     mockFetch.mockRejectedValue(new Error('network error'));
     const result = await fetchAndMatchNews('RUN-1', '2026-01-01T00:00:00Z');

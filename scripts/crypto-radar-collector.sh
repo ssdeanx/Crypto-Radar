@@ -106,7 +106,8 @@ node dist/cli.js collect --klines --futures 2>"$COLLECT_STDERR" || {
 }
 
 # ── Run ML prediction if model exists ──
-if [ -f "ml/models/model.joblib" ] || ls ml/models/model_*.joblib 2>/dev/null; then
+MODELS_DIR="${DATA_DIR}/ml/models"
+if [ -f "${MODELS_DIR}/model.joblib" ] || ls "${MODELS_DIR}"/model_*.joblib 2>/dev/null; then
   node dist/cli.js ml predict --interval 1h 2>/dev/null || true
 fi
 

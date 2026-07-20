@@ -1097,8 +1097,8 @@ program
       store.migrate();
 
       if (action === 'status') {
-        const stats = store.stats();
-        const predictions = store.getPredictions({ limit: 5 });
+        const stats = await store.stats();
+        const predictions = await store.getPredictions({ limit: 5 });
         const modelsDir = 'ml/models';
         const hasModelDir = fs.existsSync(modelsDir);
         const manifestPath = path.resolve(modelsDir, 'MANIFEST.json');
@@ -1135,10 +1135,10 @@ program
         const allLabels: import('./ml/types.js').LabelRow[] = [];
         const allKlinesMap = new Map<string, number[]>();
         const { enrichFeatures: ef } = await import('./ml/features.js');
-        const btcKlines = store.getKlines('BTCUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
-        const ethKlines = store.getKlines('ETHUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
-        const solKlines = store.getKlines('SOLUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
-        const polKlines = store.getKlines('POLUSDT', '1h', { limit: 200, order: 'desc' }).reverse();
+        const btcKlines = (await store.getKlines('BTCUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
+        const ethKlines = (await store.getKlines('ETHUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
+        const solKlines = (await store.getKlines('SOLUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
+        const polKlines = (await store.getKlines('POLUSDT', '1h', { limit: 200, order: 'desc' })).reverse();
         const referenceKlines = new Map<string, number[]>();
         if (btcKlines.length >= 20) referenceKlines.set('BTCUSDT', btcKlines.map(k => k.close));
         if (ethKlines.length >= 20) referenceKlines.set('ETHUSDT', ethKlines.map(k => k.close));
@@ -1147,19 +1147,19 @@ program
 
         for (const symbol of symbols) {
           for (const interval of intervals) {
-            const klines = store.getKlines(symbol, interval, {
+            const klines = (await store.getKlines(symbol, interval, {
               limit: Math.max(60, lookbackDays * 24),
               order: 'desc',
-            }).reverse();
+            })).reverse();
             if (klines.length < 60) {
               logger.warn(`  ${symbol} ${interval}: insufficient data (${klines.length})`);
               continue;
             }
             allKlinesMap.set(`${symbol}:${interval}`, klines.map(k => k.close));
 
-            const crossAsset = store.getCrossAsset(200);
-            const funding = store.getFunding(symbol, 100);
-            const features = (await import('./ml/features.js')).buildFeatures(
+            const crossAsset = await store.getCrossAsset(200);
+            const funding = await store.getFunding(symbol, 100);
+            const features = await (await import('./ml/features.js')).buildFeatures(
               symbol, interval, klines,
               { includeReturns: true, includeIndicators: true, includeCrossAsset: true, includeFutures: true, includeTemporal: true },
               crossAsset, funding, referenceKlines,

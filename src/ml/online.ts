@@ -113,6 +113,21 @@ export async function onlineReset(modelPath?: string): Promise<void> {
 }
 
 /**
+ * Trigger auto-retrain workflow.
+ */
+export async function autoRetrain(store: import('../store/db.js').Store): Promise<void> {
+  log.info('Online drift detected, evaluating retraining with store');
+  const { detectDrift } = await import('./drift.js');
+  const report = await detectDrift(store);
+  if (report.drift_detected) {
+    log.warn('Drift report confirmed, resetting online model', { warnings: report.warnings.length });
+    await runOnlineAction('reset', { path: DEFAULT_MODEL_PATH });
+  } else {
+    log.info('Drift report did not confirm drift, skipping reset');
+  }
+}
+
+/**
  * Run a CLI action against ml/online.py via subprocess.
  */
 async function runOnlineAction(

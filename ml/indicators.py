@@ -12,13 +12,9 @@ All functions are self-contained with lazy imports for optional dependencies.
 import json
 import logging
 import sys
-from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-
-if TYPE_CHECKING:
-    import pandas_ta_classic as ta # TODO: ta is not being used.  do not ever comment out warnings.
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +46,8 @@ def _feature_correlation_filter(
         sub = pd.DataFrame(df[feature_cols])
 
     corr: pd.DataFrame = sub.corr()
-    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+    mask = pd.DataFrame(np.triu(np.ones(corr.shape, dtype=bool), k=1), index=corr.index, columns=corr.columns, dtype=bool)
+    upper = corr.where(mask)
     to_drop = {col for col in upper.columns if (upper[col] > threshold).any()}
     if to_drop:
         logger.info(
@@ -174,10 +171,13 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
             if ema12 is not None and ema26 is not None:
                 cross_name = f"{base}_ema_12_26_cross"
                 ema_cross = pd.Series(
-                    np.where(ema12 > ema26, 1, np.where(ema12 < ema26, -1, 0)),
+                    0,
                     index=series.index,
                     name=cross_name,
+                    dtype=int,
                 )
+                ema_cross[ema12 > ema26] = 1
+                ema_cross[ema12 < ema26] = -1
                 df[cross_name] = ema_cross
                 ta_cols.append(cross_name)
                 diff_name = f"{base}_ema_12_26_diff"
@@ -238,3 +238,299 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
 
     logger.info("Added %d pandas-ta indicator columns", len(ta_cols))
     return feature_cols + [c for c in ta_cols if c not in feature_cols]
+
+
+def compute_latest_indicators(df: pd.DataFrame) -> dict:
+    """Compute all technical indicators for the latest row to serve to the Node.js frontend."""
+    try:
+        import pandas_ta_classic as ta
+    except ImportError:
+        return {}
+        
+    def val(s):
+        if s is None: return None
+        v = s.iloc[-1]
+        return None if pd.isna(v) else float(v)
+        
+    out: dict = {
+        'rsi': None,
+        'mfi': None,
+        'bb': None,
+        'macd': None,
+        'atrPct': None,
+        'psar': None,
+        'williamsR': None,
+        'adx': None,
+        'trend': None,
+        'trendStrength': 0,
+        'cci': None,
+        'keltner': None,
+        'roc': None,
+        'vwap': None,
+        'forceIndex': None,
+        'adl': None,
+        'chaikinOsc': None,
+        'stochRsi': None,
+        'trix': None,
+        'kst': None,
+        'elderRay': None,
+        'fisher': None,
+        'massIndex': None,
+        'rangePosWindow': 0.5
+    }
+    if len(df) < 5:
+        return out
+        
+    c = df['close']
+    h = df['high']
+    l = df['low']
+    o = df['open']
+    v = df['volume']
+    
+    # RSI
+    rsi = ta.rsi(c, length=14)
+    out['rsi'] = val(rsi) if rsi is not None else None
+    
+    # MFI
+    mfi = ta.mfi(h, l, c, v, length=14)
+    out['mfi'] = val(mfi) if mfi is not None else None
+    
+    # BBands
+    bb = ta.bbands(c, length=20, std=2)
+    if bb is not None and len(bb.columns) >= 5:
+        out['bb'] = {
+            'lower': val(bb.iloc[:, 0]),
+            'middle': val(bb.iloc[:, 1]),
+            'upper': val(bb.iloc[:, 2]),
+            'width': val(bb.iloc[:, 3]),
+            'position': val(bb.iloc[:, 4])
+        }
+    else: out['bb'] = None
+    
+    # MACD
+    macd = ta.macd(c, fast=12, slow=26, signal=9)
+    if macd is not None and len(macd.columns) >= 3:
+        out['macd'] = {
+            'macd': val(macd.iloc[:, 0]),
+            'histogram': val(macd.iloc[:, 1]),
+            'signal': val(macd.iloc[:, 2])
+        }
+    else: out['macd'] = None
+    
+    # ATR
+    atr = ta.atr(h, l, c, length=14)
+    atr_val = val(atr) if atr is not None else None
+    close_val = val(c)
+    out['atrPct'] = (atr_val / close_val * 100) if atr_val and close_val else None
+    
+    # Vol Trend
+    if len(v) >= 14:
+        recent = v.iloc[-7:].mean()
+        older = v.iloc[-14:-7].mean()
+        out['volTrend'] = (recent / older) - 1 if older > 0 else 0.0
+    else: out['volTrend'] = None
+    
+    # Price vs EMA50
+    ema50 = ta.ema(c, length=50)
+    ema50_val = val(ema50) if ema50 is not None else None
+    out['priceVsEma50'] = ((close_val - ema50_val) / ema50_val * 100) if close_val and ema50_val else None
+    
+    # OBV
+    obv = ta.obv(c, v)
+    out['obv'] = val(obv) if obv is not None else None
+    
+    # Vol vs Avg
+    if len(v) >= 20:
+        avg_vol = v.iloc[-20:].mean()
+        cur_vol = val(v)
+        out['volVsAvg'] = (cur_vol / avg_vol) - 1 if avg_vol > 0 and cur_vol is not None else None
+    else: out['volVsAvg'] = None
+    
+    # Stochastic
+    stoch = ta.stoch(h, l, c, k=14, d=3, smooth_k=3)
+    if stoch is not None and len(stoch.columns) >= 2:
+        out['stochastic'] = {
+            'k': val(stoch.iloc[:, 0]),
+            'd': val(stoch.iloc[:, 1])
+        }
+    else: out['stochastic'] = None
+    
+    # Ichimoku
+    ichi, _ = ta.ichimoku(h, l, c)
+    if ichi is not None and len(ichi.columns) >= 5:
+        out['ichimoku'] = {
+            'conversionLine': val(ichi.iloc[:, 0]),
+            'baseLine': val(ichi.iloc[:, 1]),
+            'spanA': val(ichi.iloc[:, 2]),
+            'spanB': val(ichi.iloc[:, 3]),
+            'laggingSpan': val(ichi.iloc[:, 4])
+        }
+    else: out['ichimoku'] = None
+    
+    # Williams R
+    willr = ta.willr(h, l, c, length=14)
+    out['williamsR'] = val(willr) if willr is not None else None
+    
+    # CMF
+    cmf = ta.cmf(h, l, c, v, length=20)
+    out['cmf'] = val(cmf) if cmf is not None else None
+    
+    # TSI
+    tsi = ta.tsi(c, fast=13, slow=25)
+    out['tsi'] = val(tsi.iloc[:, 0]) if tsi is not None else None
+    
+    # ADX
+    adx = ta.adx(h, l, c, length=14)
+    out['adx'] = val(adx.iloc[:, 0]) if adx is not None and len(adx.columns) > 0 else None
+    
+    # PSAR
+    psar = ta.psar(h, l, c)
+    if psar is not None and len(psar.columns) >= 4:
+        # psar columns: PSAR, PSAR_AF, PSAR_UP, PSAR_DOWN
+        af = val(psar.iloc[:, 1])
+        rev = False
+        if len(psar) >= 2:
+            # Check for reversal if it flipped from UP to DOWN or vice versa
+            up_curr = not pd.isna(psar.iloc[-1, 2])
+            up_prev = not pd.isna(psar.iloc[-2, 2])
+            rev = (up_curr != up_prev)
+        out['psar'] = {
+            'sar': val(psar.iloc[:, 0]),
+            'acceleration': af if af is not None else 0.02,
+            'isReversal': rev
+        }
+    else: out['psar'] = None
+    
+    # CCI
+    cci = ta.cci(h, l, c, length=20)
+    out['cci'] = val(cci) if cci is not None else None
+    
+    # Keltner Channels
+    kc = ta.kc(h, l, c, length=20, scalar=2)
+    if kc is not None and len(kc.columns) >= 3:
+        out['keltner'] = {
+            'lower': val(kc.iloc[:, 0]),
+            'middle': val(kc.iloc[:, 1]),
+            'upper': val(kc.iloc[:, 2])
+        }
+    else: out['keltner'] = None
+    
+    # ROC
+    roc = ta.roc(c, length=12)
+    out['roc'] = val(roc) if roc is not None else None
+    
+    # VWAP
+    vwap = ta.vwap(h, l, c, v)
+    out['vwap'] = val(vwap) if vwap is not None else None
+    
+    # Force Index
+    efi = ta.efi(c, v, length=13)
+    out['forceIndex'] = val(efi) if efi is not None else None
+    
+    # ADL
+    ad = ta.ad(h, l, c, v)
+    out['adl'] = val(ad) if ad is not None else None
+    
+    # Chaikin Osc
+    adosc = ta.adosc(h, l, c, v)
+    out['chaikinOsc'] = val(adosc) if adosc is not None else None
+    
+    # StochRSI
+    stochrsi = ta.stochrsi(c)
+    if stochrsi is not None and len(stochrsi.columns) >= 2:
+        out['stochRsi'] = {
+            'k': val(stochrsi.iloc[:, 0]),
+            'd': val(stochrsi.iloc[:, 1])
+        }
+    else: out['stochRsi'] = None
+    
+    # TRIX
+    trix = ta.trix(c, length=15)
+    out['trix'] = val(trix.iloc[:, 0]) if trix is not None else None
+    
+    # KST
+    kst = ta.kst(c)
+    if kst is not None and len(kst.columns) >= 2:
+        out['kst'] = {
+            'kst': val(kst.iloc[:, 0]),
+            'signal': val(kst.iloc[:, 1])
+        }
+    else: out['kst'] = None
+    
+    # Elder Ray
+    eri = ta.eri(h, l, c, length=13)
+    if eri is not None and len(eri.columns) >= 2:
+        out['elderRay'] = {
+            'bullPower': val(eri.iloc[:, 0]),
+            'bearPower': val(eri.iloc[:, 1])
+        }
+    else: out['elderRay'] = None
+    
+    # Fisher
+    fisher = ta.fisher(h, l, length=9)
+    out['fisher'] = val(fisher.iloc[:, 0]) if fisher is not None else None
+    
+    # Mass Index
+    massi = ta.massi(h, l)
+    out['massIndex'] = val(massi) if massi is not None else None
+    
+    # Range Pos Window
+    period_h = h.max()
+    period_l = l.max()
+    rng = period_h - period_l
+    if rng > 0 and close_val is not None:
+        out['rangePosWindow'] = (close_val - period_l) / rng
+    else:
+        out['rangePosWindow'] = 0.5
+        
+    return out
+
+if __name__ == '__main__':
+    try:
+        input_data = sys.stdin.read()
+        if not input_data.strip():
+            print("[]")
+            sys.exit(0)
+            
+        data = json.loads(input_data)
+        
+        if isinstance(data, dict) and "batches" in data:
+            results = {}
+            for key, rows in data["batches"].items():
+                if not rows:
+                    results[key] = {}
+                    continue
+                df = pd.DataFrame(rows)
+                if 'open_time' in df.columns:
+                    df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce').astype('Int64')
+                    df.index = pd.to_datetime(df['open_time'], unit='ms')
+                for col in ['open', 'high', 'low', 'close', 'volume']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+                results[key] = compute_latest_indicators(df)
+            print(json.dumps(results))
+            sys.exit(0)
+
+        # Expected structure: {"rows": [...]} or just a list of rows
+        rows = data.get('rows', []) if isinstance(data, dict) else data
+        
+        if not rows:
+            print("{}")
+            sys.exit(0)
+            
+        df = pd.DataFrame(rows)
+        # Type conversions to ensure correctness
+        if 'open_time' in df.columns:
+            df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce').astype('Int64')
+            df.index = pd.to_datetime(df['open_time'], unit='ms')
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
+        
+        indicators = compute_latest_indicators(df)
+        print(json.dumps(indicators))
+        sys.exit(0)
+    except Exception as e:
+        logger.error(f"Error computing indicators: {e}")
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)

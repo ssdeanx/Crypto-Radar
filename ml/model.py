@@ -54,7 +54,7 @@ def num_leaves_to_depth(num_leaves: int) -> int:
     """Map a leaf count to a CatBoost tree depth."""
     if num_leaves <= 1:
         return 6
-    return max(2, int(round(math.log2(num_leaves))))
+    return max(2, round(math.log2(num_leaves)))
 
 
 def build_catboost(

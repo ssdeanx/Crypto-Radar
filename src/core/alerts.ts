@@ -106,8 +106,8 @@ export function checkAlerts(tickers: EnrichedTicker[]): AlertResult[] {
     log.info(`Triggered ${results.length} price alert(s)`);
     import('./webhook.js').then(({ sendAlert, formatAlertMessage }) => {
       const msg = formatAlertMessage(results);
-      if (msg) sendAlert(msg).catch(() => {});
-    }).catch(() => {});
+      if (msg) sendAlert(msg).catch(err => { log.error('Alert delivery failed', { error: String(err) }); });
+    }).catch(err => { log.error('Failed to load webhook module', { error: String(err) }); });
   }
 
   return results;

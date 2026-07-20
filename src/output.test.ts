@@ -104,12 +104,15 @@ describe('JSON line output', () => {
   });
 
   it('converts undefined optional fields to null (ML schema consistency)', () => {
-    const ticker = makeTicker();
-    // Remove some optional fields to simulate runtime undefined
-    delete (ticker as any).rsi;
-    delete (ticker as any).onchainTvl;
-    delete (ticker as any).regime;
-    const json = toJSONLine(ticker);
+    // Remove some optional fields to simulate runtime undefined using destructuring
+    const { rsi, onchainTvl, regime, ...rest } = makeTicker();
+    // Use the destructured variables to satisfy linter and verify they were extracted
+    expect(rsi).toBeUndefined();
+    expect(onchainTvl).toBeUndefined();
+    expect(regime).toBeUndefined();
+    
+    const tickerWithoutOpt: Omit<EnrichedTicker, 'rsi' | 'onchainTvl' | 'regime'> = rest;
+    const json = toJSONLine(tickerWithoutOpt as EnrichedTicker);
     const parsed = JSON.parse(json);
     // Schema keys must still be present — as null, not missing
     expect(parsed).toHaveProperty('rsi');
@@ -134,7 +137,7 @@ describe('Markdown report', () => {
   it('includes technical indicators section when provided', () => {
     const tickers = [makeTicker()];
     const technicals = new Map<string, TechnicalIndicators>([
-      ['SOL', { rsi: 65, mfi: 55, bb: { upper: 90, middle: 80, lower: 70, width: 0.25, position: 0.6 }, macd: { macd: 0.5, signal: 0.3, histogram: 0.2 }, atrPct: 2.1, volTrend: 0.15, priceVsEma50: 3.2 }],
+      ['SOL', { rsi: 65, mfi: 55, bb: { upper: 90, middle: 80, lower: 70, width: 0.25, position: 0.6 }, macd: { macd: 0.5, signal: 0.3, histogram: 0.2 }, atrPct: 2.1, volTrend: 0.15, priceVsEma50: 3.2, obv: 1000, volVsAvg: 1.5 }],
     ]);
     const report = toMarkdownReport(tickers, technicals);
     expect(report).toContain('RSI');

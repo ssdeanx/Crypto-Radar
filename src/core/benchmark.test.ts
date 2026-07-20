@@ -2,7 +2,7 @@
 // Hermes Crypto Radar — Performance Benchmark Tests
 // ═══════════════════════════════════════════════════════════════════════
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runBenchmark, formatBenchmark, runBenchmarkMedian } from './benchmark.js';
 import type { BenchmarkResult } from './benchmark.js';
 
@@ -12,12 +12,14 @@ vi.mock('../radar.js', () => ({
 }));
 
 import { runRadar } from '../radar.js';
+
 const mockRunRadar = vi.mocked(runRadar);
+type MockRadarResult = Partial<Awaited<ReturnType<typeof runRadar>>>;
 
 describe('runBenchmark', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (mockRunRadar as any).mockResolvedValue({ run: { numTokens: 50 } });
+    mockRunRadar.mockResolvedValue({ run: { numTokens: 50 } } as unknown as MockRadarResult as Awaited<ReturnType<typeof runRadar>>);
   });
 
   it('returns a valid BenchmarkResult', async () => {
@@ -49,7 +51,7 @@ describe('runBenchmark', () => {
 describe('runBenchmarkMedian', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    (mockRunRadar as any).mockResolvedValue({ run: { numTokens: 42 } });
+    mockRunRadar.mockResolvedValue({ run: { numTokens: 42 } } as unknown as MockRadarResult as Awaited<ReturnType<typeof runRadar>>);
   });
 
   it('calls runRadar 3 times by default and returns a BenchmarkResult', async () => {

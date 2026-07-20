@@ -65,6 +65,56 @@ const BUCKET_BOUNDARIES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
 /** Max prediction age to consider for calibration (7 days in ms) */
 const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Map kline interval string to milliseconds */
+function intervalToMs(interval: string): number {
+  const map: Record<string, number> = {
+    '15m': 15 * 60_000,
+    '1h':  60 * 60_000,
+    '4h':  4 * 60 * 60_000,
+    '1d':  24 * 60 * 60_000,
+  };
+  return map[interval] ?? 60 * 60_000; // default 1h
+}
+
+/**
+ * Compute the actual price direction by comparing current close with
+ * the close `horizon` bars later (where bar duration = interval).
+ *
+ * Returns null if the future kline doesn't exist yet (outcome pending).
+ */
+async function computeActualDirectionForPrediction(
+  store: Store,
+  symbol: string,
+  predTs: number,
+  horizon: number,
+  interval: string,
+): Promise<-1 | 0 | 1 | null> {
+  const intervalMs = intervalToMs(interval);
+  // The current bar: the kline whose open_time <= predTs
+  const currentKlines = await store.getKlines(symbol, interval as import('../types.js').KlineInterval, {
+    limit: 1,
+    order: 'desc',
+  });
+  const currentBar = currentKlines.find(k => k.open_time <= predTs);
+  if (!currentBar) return null;
+
+  // The target bar: horizon bars after the current bar
+  const targetOpenTime = currentBar.open_time + horizon * intervalMs;
+  const futureKlines = await store.getKlines(symbol, interval as import('../types.js').KlineInterval, {
+    limit: 1,
+    order: 'asc',
+  });
+  const futureBar = futureKlines.find(k => k.open_time >= targetOpenTime);
+  if (!futureBar) return null; // outcome not yet known
+
+  const returnPct = (futureBar.close - currentBar.close) / currentBar.close;
+  // Use same 0.2% noise threshold as the labelling pipeline
+  const NOISE = 0.002;
+  if (returnPct > NOISE) return 1;
+  if (returnPct < -NOISE) return -1;
+  return 0;
+}
+
 /**
  * Compute calibration metrics from stored predictions.
  *
@@ -74,12 +124,12 @@ const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
  * @param store - SQLite store instance
  * @returns CalibrationReport
  */
-export function computeCalibration(store: Store): CalibrationReport {
+export async function computeCalibration(store: Store): Promise<CalibrationReport> {
   const now = Date.now();
   const cutoff = now - MAX_AGE_MS;
 
   // Get all predictions from the store
-  const predictions = store.getPredictions({ limit: 10_000 });
+  const predictions = await store.getPredictions({ limit: 10_000 });
   const points: CalibrationPoint[] = [];
   let totalCorrect = 0;
   let totalEvaluated = 0;
@@ -89,7 +139,7 @@ export function computeCalibration(store: Store): CalibrationReport {
     if (predTs < cutoff) continue;
 
     // Get the kline that would contain the outcome for this prediction
-    const klines = store.getKlines(pred.symbol, '1h', { limit: 5, order: 'desc' });
+    const klines = await store.getKlines(pred.symbol, '1h', { limit: 5, order: 'desc' });
     // Need at least the next kline after prediction to evaluate
     const recentKline = klines.find(k => k.open_time > predTs);
     if (!recentKline) continue; // No outcome data yet
@@ -100,7 +150,11 @@ export function computeCalibration(store: Store): CalibrationReport {
 
     // Bucket the confidence
     const bucket = getBucket(confidence);
-    const actualDirection = computeActualDirection(recentKline.close, pred.symbol);
+    // Resolve interval from prediction or default to 1h
+    const predInterval = (pred as typeof pred & { interval?: string }).interval ?? '1h';
+    const actualDirection = await computeActualDirectionForPrediction(
+      store, pred.symbol, predTs, pred.horizon ?? 5, predInterval,
+    );
     const correct = actualDirection !== null ? direction === actualDirection : null;
 
     const point: CalibrationPoint = {
@@ -169,7 +223,7 @@ export function computeCalibration(store: Store): CalibrationReport {
   const overallAccuracy = totalEvaluated > 0 ? totalCorrect / totalEvaluated : 0;
   const ece = eceCount > 0 ? eceSum : 0;
 
-  return {
+  const report = {
     buckets,
     overallAccuracy,
     totalPredictions: totalEvaluated,
@@ -177,18 +231,9 @@ export function computeCalibration(store: Store): CalibrationReport {
     isCalibrated: ece < 0.1, // ECE < 10% is considered well-calibrated
     lastUpdated: new Date().toISOString(),
   };
-}
 
-/**
- * Compute the actual direction from a close price.
- * Simple heuristic: if close > previous close → up, etc.
- * In production, this would use the same label methodology as the training pipeline.
- */
-function computeActualDirection(close: number, _symbol: string): -1 | 0 | 1 | null {
-  // This is a simplified placeholder. In production, compare against
-  // the close N bars later (where N = prediction horizon).
-  // For now, we need a proxy — we store recent klines.
-  return null; // Requires historical klines to compute properly
+  log.info('Computed ML calibration report', { ece, overallAccuracy, totalPredictions: totalEvaluated });
+  return report;
 }
 
 /**

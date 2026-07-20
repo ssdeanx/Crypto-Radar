@@ -1,0 +1,15 @@
+node_modules/
+.git/
+.codegraph/
+data/
+dist/*.map
+*.test.ts
+__pycache__/
+*.pyc
+coverage/
+.env
+.env.local
+.venv-ml/
+.gitignore
+.hermes/
+.cursorrules

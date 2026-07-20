@@ -1,7 +1,7 @@
 {
   "name": "crypto-radar",
-  "version": "2.5.0",
-  "description": "Hermes Agent plugin for enterprise-grade multi-chain crypto market intelligence — tracks 49 tokens across 15+ chains with 26 technical indicators. RSS news aggregation from 11 feeds with 3-strategy signal engine (momentum, mean-reversion, trend-following), divergence detection, and ADX trend-strength filter. Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX/CSV/JSON/MD report export, SVG candlestick/dashboard charts, candlestick pattern recognition, volume profile analysis, support/resistance detection, market regime classification, N×N correlation engine, backtesting engine, Discord/Telegram webhook alerts, WebSocket real-time prices, and a warm daemon mode for continuous monitoring.",
+  "version": "2.6.0",
+  "description": "Crypto Radar multi-chain crypto market intelligence — tracks 49 tokens across 15+ chains with 26 technical indicators. RSS news aggregation from 11 feeds with 3-strategy signal engine (momentum, mean-reversion, trend-following), divergence detection, and ADX trend-strength filter. Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX/CSV/JSON/MD report export, SVG candlestick/dashboard charts, candlestick pattern recognition, volume profile analysis, support/resistance detection, market regime classification, N×N correlation engine, backtesting engine, Discord/Telegram webhook alerts, WebSocket real-time prices, and a warm daemon mode for continuous monitoring.",
   "type": "module",
   "main": "./dist/cli.js",
   "bin": {
@@ -9,7 +9,6 @@
   },
   "exports": {
     ".": "./dist/index.js",
-    "./prices": "./dist/prices.js",
     "./news": "./dist/news.js",
     "./signals": "./dist/signals.js"
   },
@@ -34,8 +33,10 @@
     "prebuild": "npm run clean",
     "build": "tsc",
     "postbuild": "echo 'Build complete'",
+    "dev": "tsc --watch",
     "watch": "tsc --watch",
     "start": "node dist/cli.js",
+    "start:dev": "node --watch dist/cli.js",
     "radar": "node dist/cli.js",
     "report": "node dist/cli.js report",
     "daemon": "node dist/cli.js daemon",
@@ -49,6 +50,7 @@
     "coverage": "vitest run --coverage",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
+    "validate": "npm run build && npm run lint && npm run test && npm run check:python",
     "format": "prettier --check src/",
     "format:fix": "prettier --write src/",
     "docs": "typedoc",
@@ -58,10 +60,14 @@
     "ml:status": "node dist/cli.js ml status",
     "ml:train": "node dist/cli.js ml train",
     "ml:predict": "node dist/cli.js ml predict",
+    "check:python": "bash -c 'cd ml && mypy --strict --ignore-missing-imports *.py 2>&1 | tail -5 && ruff check *.py 2>&1 | tail -5'",
+    "doctor": "bash -c 'echo \"Node: $(node --version)\" && echo \"TypeScript: $(npx tsc --version)\" && echo \"Python: $(python3 --version 2>&1 || echo not found)\" && echo \"Env: RADAR__DATA_DIR=${RADAR__DATA_DIR:-default}\" && echo \"Tests: $(npx vitest run --reporter=verbose 2>&1 | tail -1)\"'",
     "ml:setup": "bash scripts/setup-ml-env.sh",
     "setup": "bash scripts/setup.sh",
     "setup:ml": "bash scripts/setup-ml-env.sh",
     "clean": "rm -rf dist",
+    "clean:full": "rm -rf dist node_modules .venv-ml",
+    "rebuild": "npm run clean:full && npm install && npm run build && bash scripts/setup-ml-env.sh",
     "prepare": "husky",
     "prepublishOnly": "npm run build && npm test && npm run lint",
     "publish": "bash scripts/publish.sh",
@@ -109,12 +115,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ssdeanx/Hermes-Crypto-Radar.git"
+    "url": "git+https://github.com/ssdeanx/Crypto-Radar.git"
   },
   "bugs": {
-    "url": "https://github.com/ssdeanx/Hermes-Crypto-Radar/issues"
+    "url": "https://github.com/ssdeanx/Crypto-Radar/issues"
   },
-  "homepage": "https://github.com/ssdeanx/Hermes-Crypto-Radar#readme",
+  "homepage": "https://github.com/ssdeanx/Crypto-Radar#readme",
   "sideEffects": false,
   "author": "ssdeanx",
   "license": "MIT",
@@ -140,6 +146,7 @@
     "Testing"
   ],
   "dependencies": {
+    "@ai-sdk/openai-compatible": "^3.0.12",
     "@fastify/compress": "^9.1.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.0",
@@ -147,6 +154,10 @@
     "@fastify/rate-limit": "^11.1.0",
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.0",
+    "@google-cloud/bigquery": "^8.3.1",
+    "@google-cloud/secret-manager": "^6.2.0",
+    "@google-cloud/vertexai": "^1.12.0",
+    "ai": "^7.0.31",
     "asciichart": "^1.5.25",
     "bcrypt": "^6.0.0",
     "commander": "^15.0.0",

@@ -196,7 +196,7 @@ describe('Binance API integration', () => {
     expect(klines[0]!.open).toBeGreaterThan(0);
 
     // Act: compute all indicators from real klines
-    const indicators = computeAllIndicators(klines);
+    const indicators = await computeAllIndicators(klines);
 
     // Assert: all indicator fields are populated
     expect(indicators.rsi).not.toBeNull();

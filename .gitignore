@@ -4,7 +4,7 @@ coverage/
 
 *.csv
 *.jsonl
-*.txt
+
 *.xlsx
 *.db
 *.db-shm
@@ -50,3 +50,4 @@ crypto-radar-state.json
 pnpm-lock.yaml
 
 data/crypto-radar/crypto-radar.db
+deploy.sh

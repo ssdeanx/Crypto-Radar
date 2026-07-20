@@ -2,15 +2,15 @@
 """
 Hermes Crypto Radar — Batch Prediction via Python Subprocess
 
-Reads CSV feature rows from stdin, loads a trained CatBoost model,
-and writes JSON predictions to stdout.
+Reads JSONL feature rows from stdin (one JSON object per line), loads a
+trained CatBoost model, and writes JSON predictions to stdout.
 
 Usage (via Node subprocess):
-    echo "rsi,macd_hist,bb_width,..." | python3 ml/predict.py \\
+    echo '{"rsi":0.5,"macd_hist":0.1,...}' | python3 ml/predict.py \\
         --model ml/models/model.cbm \\
         --norm-stats data/ml/dataset_norm_abc123.json
 
-F3: Accepts multiple feature rows in a single CSV block (batch inference),
+F3: Accepts multiple feature rows in a single JSONL block (batch inference),
     returns a JSON array of predictions matching the input rows.
 
 F5: NaN values are filled using the training-set median's z-score
@@ -18,7 +18,7 @@ F5: NaN values are filled using the training-set median's z-score
 
 Exit codes:
     0 — success (including empty input → "[]")
-    1 — fatal error (model not found, corrupt model, bad CSV)
+    1 — fatal error (model not found, corrupt model, bad JSONL)
     2 — stdin read timeout (SIGALRM)
 """
 
@@ -208,18 +208,45 @@ def predict(args: argparse.Namespace) -> None:
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(sys.stdin.buffer.read)
             raw_data = future.result(timeout=60)
-        df = pd.read_csv(io.BytesIO(raw_data))
+        # JSONL input: one JSON object per line; pd.read_json with lines=True
+        # preserves native numeric types and null values — no CSV type coercion.
+        df = pd.read_json(io.BytesIO(raw_data), lines=True)
     except TimeoutError:
         logger.error("stdin read timed out after 60s")
         sys.exit(2)
     except Exception as e:
-        logger.error("Failed to parse CSV from stdin: %s", e)
-        print(json.dumps({"error": f"CSV parse error: {e}"}))
+        logger.error("Failed to parse JSONL from stdin: %s", e)
+        print(json.dumps({"error": f"JSONL parse error: {e}"}))
         sys.exit(1)
 
     if df.empty:
         print("[]")
         return
+
+    # ── TS-PY contract: validate feature name header ──
+    if not df.empty and df.iloc[0].get("_header") is True:
+        header_features = df.iloc[0].get("_features", [])
+        header_count = df.iloc[0].get("_featureCount", 0)
+        logger.info(
+            "TS-PY contract: %d features expected, %d columns in data",
+            header_count,
+            len(df.columns) - 1,
+        )
+        # Remove header row (it's metadata, not data)
+        df = df.iloc[1:].reset_index(drop=True)
+        # Validate feature alignment
+        if header_features:
+            missing = [f for f in header_features if f not in df.columns]
+            if missing:
+                logger.warning(
+                    "TS-PY contract: %d missing features: %s",
+                    len(missing),
+                    missing[:5],
+                )
+    else:
+        logger.warning(
+            "TS-PY contract: no feature header found (backward-compatible mode)"
+        )
 
     # ── Feature columns: all numeric columns ──
     feature_cols = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]

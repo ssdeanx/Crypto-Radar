@@ -68,6 +68,15 @@ export interface PredictionResult {
   modelId: string;
   /** Feature attribution from SHAP (feature_name → importance), present when --explain is used */
   explanation?: Record<string, number>;
+  reasoning?: string;
+}
+
+/** Feature name header for TS-PY subprocess contract */
+export interface PredictContractHeader {
+  _header: true;
+  _features: string[];
+  _featureCount: number;
+  _timestamp: string;
 }
 
 /** Normalization statistics computed during dataset assembly */

@@ -51,34 +51,34 @@ function isNotNaN(v: unknown): boolean {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('Fuzz: Empty arrays', () => {
-  it('sma returns null', () => { expect(sma([], 14)).toBeNull(); });
-  it('ema returns null', () => { expect(ema([], 14)).toBeNull(); });
-  it('emaSeries returns empty', () => {
+  it('sma returns null', async () => { expect(sma([], 14)).toBeNull(); });
+  it('ema returns null', async () => { expect(ema([], 14)).toBeNull(); });
+  it('emaSeries returns empty', async () => {
     const r = emaSeries([], 14);
     expect(r).toHaveLength(0);
   });
-  it('RSI returns null', () => { expect(computeRSI([])).toBeNull(); });
-  it('RSI series returns empty', () => {
+  it('RSI returns null', async () => { expect(computeRSI([])).toBeNull(); });
+  it('RSI series returns empty', async () => {
     expect(rsiSeries([])).toHaveLength(0);
   });
-  it('MACD returns nulls', () => {
+  it('MACD returns nulls', async () => {
     const r = computeMACD([]);
     expect(r.macd).toBeNull();
     expect(r.signal).toBeNull();
     expect(r.histogram).toBeNull();
   });
-  it('BB returns null', () => { expect(computeBB([])).toBeNull(); });
-  it('ATR returns null', () => { expect(computeATR([], [], [])).toBeNull(); });
-  it('MFI returns null', () => { expect(computeMFI([], [], [], [])).toBeNull(); });
-  it('VolTrend returns null', () => { expect(computeVolTrend([])).toBeNull(); });
-  it('OBV returns null', () => { expect(computeOBV([], [])).toBeNull(); });
-  it('VolVsAvg returns null', () => { expect(computeVolVsAvg([])).toBeNull(); });
-  it('Stochastic returns nulls', () => {
+  it('BB returns null', async () => { expect(computeBB([])).toBeNull(); });
+  it('ATR returns null', async () => { expect(computeATR([], [], [])).toBeNull(); });
+  it('MFI returns null', async () => { expect(computeMFI([], [], [], [])).toBeNull(); });
+  it('VolTrend returns null', async () => { expect(computeVolTrend([])).toBeNull(); });
+  it('OBV returns null', async () => { expect(computeOBV([], [])).toBeNull(); });
+  it('VolVsAvg returns null', async () => { expect(computeVolVsAvg([])).toBeNull(); });
+  it('Stochastic returns nulls', async () => {
     const r = computeStochastic([], [], []);
     expect(r.k).toBeNull();
     expect(r.d).toBeNull();
   });
-  it('Ichimoku returns nulls', () => {
+  it('Ichimoku returns nulls', async () => {
     const r = computeIchimoku([], [], []);
     expect(r.conversionLine).toBeNull();
     expect(r.baseLine).toBeNull();
@@ -86,35 +86,35 @@ describe('Fuzz: Empty arrays', () => {
     expect(r.spanB).toBeNull();
     expect(r.laggingSpan).toBeNull();
   });
-  it('Williams R returns null', () => { expect(computeWilliamsR([], [], [])).toBeNull(); });
-  it('CMF returns null', () => { expect(computeCMF([], [], [], [])).toBeNull(); });
-  it('TSI returns null', () => { expect(computeTSI([])).toBeNull(); });
-  it('ADX returns null', () => { expect(computeADX([], [], [])).toBeNull(); });
-  it('PSAR returns null', () => { expect(computePSAR([], [], [])).toBeNull(); });
-  it('CCI returns null', () => { expect(computeCCI([], [], [])).toBeNull(); });
-  it('Keltner returns null', () => { expect(computeKeltner([], [], [])).toBeNull(); });
-  it('ROC returns null', () => { expect(computeROC([])).toBeNull(); });
-  it('VWAP returns null', () => { expect(computeVWAP([], [], [], [])).toBeNull(); });
-  it('ForceIndex returns null', () => { expect(computeForceIndex([], [], 13)).toBeNull(); });
-  it('ADL returns null', () => { expect(computeADL([], [], [], [])).toBeNull(); });
-  it('ChaikinOsc returns null', () => { expect(computeChaikinOsc([], [], [], [])).toBeNull(); });
-  it('StochRSI returns nulls', () => {
+  it('Williams R returns null', async () => { expect(computeWilliamsR([], [], [])).toBeNull(); });
+  it('CMF returns null', async () => { expect(computeCMF([], [], [], [])).toBeNull(); });
+  it('TSI returns null', async () => { expect(computeTSI([])).toBeNull(); });
+  it('ADX returns null', async () => { expect(computeADX([], [], [])).toBeNull(); });
+  it('PSAR returns null', async () => { expect(computePSAR([], [], [])).toBeNull(); });
+  it('CCI returns null', async () => { expect(computeCCI([], [], [])).toBeNull(); });
+  it('Keltner returns null', async () => { expect(computeKeltner([], [], [])).toBeNull(); });
+  it('ROC returns null', async () => { expect(computeROC([])).toBeNull(); });
+  it('VWAP returns null', async () => { expect(computeVWAP([], [], [], [])).toBeNull(); });
+  it('ForceIndex returns null', async () => { expect(computeForceIndex([], [], 13)).toBeNull(); });
+  it('ADL returns null', async () => { expect(computeADL([], [], [], [])).toBeNull(); });
+  it('ChaikinOsc returns null', async () => { expect(computeChaikinOsc([], [], [], [])).toBeNull(); });
+  it('StochRSI returns nulls', async () => {
     const r = computeStochRSI([], 14, 14);
     expect(r.stochRsi).toBeNull();
     expect(r.k).toBeNull();
     expect(r.d).toBeNull();
   });
-  it('TRIX returns null', () => { expect(computeTRIX([])).toBeNull(); });
-  it('KST returns default', () => {
+  it('TRIX returns null', async () => { expect(computeTRIX([])).toBeNull(); });
+  it('KST returns default', async () => {
     const r = computeKST([]);
     expect(r.kst).toBe(0);
     expect(r.signal).toBeNull();
   });
-  it('ElderRay returns null', () => { expect(computeElderRay([], [], [])).toBeNull(); });
-  it('Fisher returns null', () => { expect(computeFisher([], [], [])).toBeNull(); });
-  it('MassIndex returns null', () => { expect(computeMassIndex([], [])).toBeNull(); });
-  it('computeAllIndicators handles empty klines', () => {
-    const r = computeAllIndicators([]);
+  it('ElderRay returns null', async () => { expect(computeElderRay([], [], [])).toBeNull(); });
+  it('Fisher returns null', async () => { expect(computeFisher([], [], [])).toBeNull(); });
+  it('MassIndex returns null', async () => { expect(computeMassIndex([], [])).toBeNull(); });
+  it('computeAllIndicators handles empty klines', async () => {
+    const r = await computeAllIndicators([]);
     expect(r).toBeDefined();
     expect(r.rsi).toBeNull();
     expect(r.macd?.macd).toBeNull();
@@ -132,58 +132,58 @@ describe('Fuzz: Empty arrays', () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('Fuzz: Single-element arrays', () => {
-  it('sma returns null', () => { expect(sma([42], 14)).toBeNull(); });
-  it('ema returns null', () => { expect(ema([42], 14)).toBeNull(); });
-  it('emaSeries returns all nulls', () => {
+  it('sma returns null', async () => { expect(sma([42], 14)).toBeNull(); });
+  it('ema returns null', async () => { expect(ema([42], 14)).toBeNull(); });
+  it('emaSeries returns all nulls', async () => {
     expect(emaSeries([42], 14)).toEqual([null]);
   });
-  it('RSI returns null', () => { expect(computeRSI([100])).toBeNull(); });
-  it('RSI series returns null', () => {
+  it('RSI returns null', async () => { expect(computeRSI([100])).toBeNull(); });
+  it('RSI series returns null', async () => {
     expect(rsiSeries([100])).toEqual([null]);
   });
-  it('MACD returns nulls', () => {
+  it('MACD returns nulls', async () => {
     const r = computeMACD([100]);
     expect(r.macd).toBeNull();
   });
-  it('BB returns null', () => { expect(computeBB([100])).toBeNull(); });
-  it('ATR returns null', () => { expect(computeATR([100], [95], [100])).toBeNull(); });
-  it('MFI returns null', () => { expect(computeMFI([100], [95], [100], [1000])).toBeNull(); });
-  it('VolTrend returns null', () => { expect(computeVolTrend([1000])).toBeNull(); });
-  it('OBV returns null', () => { expect(computeOBV([100], [1000])).toBeNull(); });
-  it('VolVsAvg returns null', () => { expect(computeVolVsAvg([1000])).toBeNull(); });
-  it('Stochastic returns nulls', () => {
+  it('BB returns null', async () => { expect(computeBB([100])).toBeNull(); });
+  it('ATR returns null', async () => { expect(computeATR([100], [95], [100])).toBeNull(); });
+  it('MFI returns null', async () => { expect(computeMFI([100], [95], [100], [1000])).toBeNull(); });
+  it('VolTrend returns null', async () => { expect(computeVolTrend([1000])).toBeNull(); });
+  it('OBV returns null', async () => { expect(computeOBV([100], [1000])).toBeNull(); });
+  it('VolVsAvg returns null', async () => { expect(computeVolVsAvg([1000])).toBeNull(); });
+  it('Stochastic returns nulls', async () => {
     const r = computeStochastic([100], [95], [100]);
     expect(r.k).toBeNull();
   });
-  it('Ichimoku returns nulls', () => {
+  it('Ichimoku returns nulls', async () => {
     const r = computeIchimoku([100], [95], [100]);
     expect(r.conversionLine).toBeNull();
   });
-  it('Williams R returns null', () => { expect(computeWilliamsR([100], [95], [100])).toBeNull(); });
-  it('CMF returns null', () => { expect(computeCMF([100], [95], [100], [1000])).toBeNull(); });
-  it('TSI returns null', () => { expect(computeTSI([100])).toBeNull(); });
-  it('ADX returns null', () => { expect(computeADX([100], [95], [100])).toBeNull(); });
-  it('PSAR returns null', () => { expect(computePSAR([100], [95], [100])).toBeNull(); });
-  it('CCI returns null', () => { expect(computeCCI([100], [95], [100])).toBeNull(); });
-  it('Keltner returns null', () => { expect(computeKeltner([100], [95], [100])).toBeNull(); });
-  it('ROC returns null', () => { expect(computeROC([100])).toBeNull(); });
-  it('VWAP returns value for single point', () => {
+  it('Williams R returns null', async () => { expect(computeWilliamsR([100], [95], [100])).toBeNull(); });
+  it('CMF returns null', async () => { expect(computeCMF([100], [95], [100], [1000])).toBeNull(); });
+  it('TSI returns null', async () => { expect(computeTSI([100])).toBeNull(); });
+  it('ADX returns null', async () => { expect(computeADX([100], [95], [100])).toBeNull(); });
+  it('PSAR returns null', async () => { expect(computePSAR([100], [95], [100])).toBeNull(); });
+  it('CCI returns null', async () => { expect(computeCCI([100], [95], [100])).toBeNull(); });
+  it('Keltner returns null', async () => { expect(computeKeltner([100], [95], [100])).toBeNull(); });
+  it('ROC returns null', async () => { expect(computeROC([100])).toBeNull(); });
+  it('VWAP returns value for single point', async () => {
     expect(computeVWAP([100], [95], [98], [1000])).not.toBeNull();
   });
-  it('ForceIndex returns null', () => { expect(computeForceIndex([100], [1000])).toBeNull(); });
-  it('ADL returns null', () => { expect(computeADL([100], [95], [100], [1000])).toBeNull(); });
-  it('ChaikinOsc returns null', () => { expect(computeChaikinOsc([100], [95], [100], [1000])).toBeNull(); });
-  it('StochRSI returns nulls', () => {
+  it('ForceIndex returns null', async () => { expect(computeForceIndex([100], [1000])).toBeNull(); });
+  it('ADL returns null', async () => { expect(computeADL([100], [95], [100], [1000])).toBeNull(); });
+  it('ChaikinOsc returns null', async () => { expect(computeChaikinOsc([100], [95], [100], [1000])).toBeNull(); });
+  it('StochRSI returns nulls', async () => {
     const r = computeStochRSI([100], 14, 14);
     expect(r.stochRsi).toBeNull();
   });
-  it('TRIX returns null', () => { expect(computeTRIX([100])).toBeNull(); });
-  it('ElderRay returns null', () => { expect(computeElderRay([100], [95], [100])).toBeNull(); });
-  it('Fisher returns null', () => { expect(computeFisher([100], [95], [100])).toBeNull(); });
-  it('MassIndex returns null', () => { expect(computeMassIndex([100], [95])).toBeNull(); });
-  it('computeAllIndicators handles single kline', () => {
+  it('TRIX returns null', async () => { expect(computeTRIX([100])).toBeNull(); });
+  it('ElderRay returns null', async () => { expect(computeElderRay([100], [95], [100])).toBeNull(); });
+  it('Fisher returns null', async () => { expect(computeFisher([100], [95], [100])).toBeNull(); });
+  it('MassIndex returns null', async () => { expect(computeMassIndex([100], [95])).toBeNull(); });
+  it('computeAllIndicators handles single kline', async () => {
     const klines = makeKlines(1);
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
     expect(r.rsi).toBeNull();
     expect(r.bb).toBeNull();
@@ -208,75 +208,75 @@ describe('Fuzz: NaN values in data', () => {
   const nanArr = (n: number) => Array(n).fill(NaN);
   const nanHLC = (n: number) => [nanArr(n), nanArr(n), nanArr(n)] as const;
 
-  it('sma returns NaN (propagates NaN), period >= len', () => {
+  it('sma returns NaN (propagates NaN), period >= len', async () => {
     expect(sma(nanArr(20), 20)).toBeNaN();
   });
-  it('sma returns null when period > len', () => {
+  it('sma returns null when period > len', async () => {
     expect(sma(nanArr(5), 20)).toBeNull();
   });
-  it('ema returns NaN (propagates NaN)', () => {
+  it('ema returns NaN (propagates NaN)', async () => {
     const r = ema(nanArr(20), 14);
     expect(r).not.toBeNull();
     expect(r!).toBeNaN();
   });
-  it('RSI with all NaN does not crash', () => {
+  it('RSI with all NaN does not crash', async () => {
     const r = computeRSI(nanArr(30));
     // Function should not throw; NaN or null are both acceptable
     expect(r === null || (typeof r === 'number')).toBe(true);
   });
-  it('MACD with all NaN does not crash', () => {
+  it('MACD with all NaN does not crash', async () => {
     const r = computeMACD(nanArr(40));
     expect(r).toBeDefined();
   });
-  it('BB with all NaN does not crash', () => {
+  it('BB with all NaN does not crash', async () => {
     const r = computeBB(nanArr(30));
     expect(r === null || (typeof r.upper === 'number')).toBe(true);
   });
-  it('ATR with all NaN does not crash', () => {
+  it('ATR with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(30);
     expect(computeATR(h, l, c)).not.toBeUndefined();
   });
-  it('MFI with all NaN does not crash', () => {
+  it('MFI with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(20);
     expect(computeMFI(h, l, c, nanArr(20))).not.toBeUndefined();
   });
-  it('Stochastic with all NaN does not crash', () => {
+  it('Stochastic with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(20);
     const r = computeStochastic(h, l, c);
     expect(r).toBeDefined();
   });
-  it('Ichimoku with all NaN does not crash', () => {
+  it('Ichimoku with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(30);
     const r = computeIchimoku(h, l, c);
     expect(r).toBeDefined();
   });
-  it('Williams R with all NaN does not crash', () => {
+  it('Williams R with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(20);
     expect(computeWilliamsR(h, l, c)).not.toBeUndefined();
   });
-  it('CMF with all NaN does not crash', () => {
+  it('CMF with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(20);
     expect(computeCMF(h, l, c, nanArr(20))).not.toBeUndefined();
   });
-  it('TSI with all NaN does not crash', () => {
+  it('TSI with all NaN does not crash', async () => {
     expect(computeTSI(nanArr(60))).not.toBeUndefined();
   });
-  it('ADX with all NaN does not crash', () => {
+  it('ADX with all NaN does not crash', async () => {
     const [h, l, c] = nanHLC(40);
     expect(computeADX(h, l, c)).not.toBeUndefined();
   });
-  it('VolTrend with all NaN does not crash', () => {
+  it('VolTrend with all NaN does not crash', async () => {
     expect(computeVolTrend(nanArr(20))).not.toBeUndefined();
   });
-  it('OBV with NaN closes does not crash', () => {
+  it('OBV with NaN closes does not crash', async () => {
     expect(computeOBV(nanArr(10), nanArr(10))).not.toBeUndefined();
   });
-  it('VolVsAvg with all NaN does not crash', () => {
+  it('VolVsAvg with all NaN does not crash', async () => {
     expect(computeVolVsAvg(nanArr(25))).not.toBeUndefined();
   });
-  it('computeAllIndicators with NaN klines does not crash', () => {
+  it('computeAllIndicators with NaN klines does not crash', async () => {
     const klines = makeKlines(80).map(k => ({ ...k, close: NaN, high: NaN, low: NaN, volume: NaN }));
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
   });
 });
@@ -293,54 +293,54 @@ describe('Fuzz: Infinity values in data', () => {
   const negInfArr = (n: number) => Array(n).fill(-Infinity);
   const infHLC = (n: number) => [infArr(n), infArr(n), infArr(n)] as const;
 
-  it('sma with Infinity returns Infinity', () => {
+  it('sma with Infinity returns Infinity', async () => {
     expect(sma(infArr(20), 14)).toBe(Infinity);
   });
-  it('sma with -Infinity returns -Infinity', () => {
+  it('sma with -Infinity returns -Infinity', async () => {
     expect(sma(negInfArr(20), 14)).toBe(-Infinity);
   });
-  it('RSI with Infinity does not crash', () => {
+  it('RSI with Infinity does not crash', async () => {
     expect(computeRSI(infArr(30))).not.toBeUndefined();
   });
-  it('RSI with -Infinity does not crash', () => {
+  it('RSI with -Infinity does not crash', async () => {
     expect(computeRSI(negInfArr(30))).not.toBeUndefined();
   });
-  it('MACD with Infinity does not crash', () => {
+  it('MACD with Infinity does not crash', async () => {
     expect(computeMACD(infArr(40))).toBeDefined();
   });
-  it('BB with Infinity does not crash', () => {
+  it('BB with Infinity does not crash', async () => {
     const r = computeBB(infArr(30));
     expect(r === null || (typeof r.upper === 'number')).toBe(true);
   });
-  it('ATR with Infinity does not crash', () => {
+  it('ATR with Infinity does not crash', async () => {
     const [h, l, c] = infHLC(30);
     expect(computeATR(h, l, c)).not.toBeUndefined();
   });
-  it('Stochastic with Infinity does not crash', () => {
+  it('Stochastic with Infinity does not crash', async () => {
     const [h, l, c] = infHLC(20);
     expect(computeStochastic(h, l, c)).toBeDefined();
   });
-  it('Ichimoku with Infinity does not crash', () => {
+  it('Ichimoku with Infinity does not crash', async () => {
     const [h, l, c] = infHLC(30);
     expect(computeIchimoku(h, l, c)).toBeDefined();
   });
-  it('Williams R with Infinity does not crash', () => {
+  it('Williams R with Infinity does not crash', async () => {
     const [h, l, c] = infHLC(20);
     expect(computeWilliamsR(h, l, c)).not.toBeUndefined();
   });
-  it('CMF with Infinity does not crash', () => {
+  it('CMF with Infinity does not crash', async () => {
     const [h, l, c] = infHLC(30);
     expect(computeCMF(h, l, c, infArr(30))).not.toBeUndefined();
   });
-  it('TSI with Infinity does not crash', () => {
+  it('TSI with Infinity does not crash', async () => {
     expect(computeTSI(infArr(60))).not.toBeUndefined();
   });
-  it('OBV with Infinity does not crash', () => {
+  it('OBV with Infinity does not crash', async () => {
     expect(computeOBV(infArr(10), infArr(10))).not.toBeUndefined();
   });
-  it('computeAllIndicators with Infinity klines does not crash', () => {
+  it('computeAllIndicators with Infinity klines does not crash', async () => {
     const klines = makeKlines(80).map(k => ({ ...k, close: Infinity, high: Infinity, low: Infinity, volume: Infinity }));
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
   });
 });
@@ -354,18 +354,18 @@ describe('Fuzz: All identical values', () => {
   const flat30 = new Array(30).fill(100);
   const flat60 = new Array(60).fill(100);
 
-  it('sma returns same value', () => {
+  it('sma returns same value', async () => {
     expect(sma(flat20, 14)).toBe(100);
   });
-  it('ema returns same value', () => {
+  it('ema returns same value', async () => {
     expect(ema(flat20, 14)).toBe(100);
   });
-  it('RSI returns 100 on flat prices (avgLoss===0 → early return)', () => {
+  it('RSI returns 100 on flat prices (avgLoss===0 → early return)', async () => {
     // All deltas are 0 → avgLoss === 0 → code returns 100
     const r = computeRSI(flat30);
     expect(r).toBe(100);
   });
-  it('BB returns bands all at middle on flat', () => {
+  it('BB returns bands all at middle on flat', async () => {
     const r = computeBB(flat20, 20);
     expect(r).not.toBeNull();
     expect(r!.middle).toBe(100);
@@ -374,7 +374,7 @@ describe('Fuzz: All identical values', () => {
     expect(r!.width).toBe(0);
     expect(r!.position).toBe(0.5);
   });
-  it('MACD returns all zeros on flat', () => {
+  it('MACD returns all zeros on flat', async () => {
     const r = computeMACD(flat30);
     if (r.macd !== null) {
       expect(r.macd).toBe(0);
@@ -382,42 +382,42 @@ describe('Fuzz: All identical values', () => {
       expect(r.histogram).toBe(0);
     }
   });
-  it('ATR returns 0 on flat prices', () => {
+  it('ATR returns 0 on flat prices', async () => {
     const r = computeATR(flat30, flat30, flat30);
     expect(r).not.toBeNull();
     expect(r!).toBe(0);
   });
-  it('Stochastic returns 50 on flat', () => {
+  it('Stochastic returns 50 on flat', async () => {
     const flat20Arr = new Array(20).fill(100);
     const r = computeStochastic(flat20Arr, flat20Arr, flat20Arr);
     if (r.k !== null) {
       expect(r.k).toBe(50);
     }
   });
-  it('Williams R returns -50 on flat', () => {
+  it('Williams R returns -50 on flat', async () => {
     const flat15 = new Array(15).fill(100);
     expect(computeWilliamsR(flat15, flat15, flat15)).toBe(-50);
   });
-  it('TSI returns 0 on flat (no momentum)', () => {
+  it('TSI returns 0 on flat (no momentum)', async () => {
     expect(computeTSI(flat60)).toBe(0);
   });
-  it('VolTrend returns 0 on flat volumes', () => {
+  it('VolTrend returns 0 on flat volumes', async () => {
     expect(computeVolTrend(flat20)).toBe(0);
   });
-  it('VolVsAvg returns 0 on flat volumes', () => {
+  it('VolVsAvg returns 0 on flat volumes', async () => {
     expect(computeVolVsAvg(flat20)).toBe(0);
   });
-  it('MFI returns 100 on flat prices with volume', () => {
+  it('MFI returns 100 on flat prices with volume', async () => {
     const r = computeMFI(flat30, flat30, flat30, flat30);
     expect(r).not.toBeNull();
   });
-  it('CMF returns 0 on flat (no range, neutral multiplier)', () => {
+  it('CMF returns 0 on flat (no range, neutral multiplier)', async () => {
     expect(computeCMF(flat20, flat20, flat20, new Array(20).fill(1000))).toBe(0);
   });
-  it('ADX returns 0 on flat', () => {
+  it('ADX returns 0 on flat', async () => {
     expect(computeADX(flat30, flat30, flat30)).toBe(0);
   });
-  it('OBV returns 0 on flat closes', () => {
+  it('OBV returns 0 on flat closes', async () => {
     expect(computeOBV(new Array(10).fill(100), new Array(10).fill(1000))).toBe(0);
   });
 });
@@ -432,7 +432,7 @@ describe('Fuzz: Large arrays (2000 elements)', () => {
   const bigLows = bigCloses.map(c => c - 2);
   const bigVolumes = new Array(2000).fill(1000);
 
-  it('computes all single-indicator functions without crashing', () => {
+  it('computes all single-indicator functions without crashing', async () => {
     expect(sma(bigCloses, 14)).not.toBeNull();
     expect(ema(bigCloses, 14)).not.toBeNull();
     expect(computeRSI(bigCloses)).not.toBeNull();
@@ -447,7 +447,7 @@ describe('Fuzz: Large arrays (2000 elements)', () => {
     expect(computeADX(bigHighs, bigLows, bigCloses)).not.toBeNull();
   });
 
-  it('MACD handles large arrays', () => {
+  it('MACD handles large arrays', async () => {
     const r = computeMACD(bigCloses);
     expect(r.macd).not.toBeNull();
     expect(r.signal).not.toBeNull();
@@ -455,14 +455,14 @@ describe('Fuzz: Large arrays (2000 elements)', () => {
     expect(isNotNaN(r.macd)).toBe(true);
   });
 
-  it('Stochastic handles large arrays', () => {
+  it('Stochastic handles large arrays', async () => {
     const r = computeStochastic(bigHighs, bigLows, bigCloses);
     expect(r.k).not.toBeNull();
     expect(r.d).not.toBeNull();
     expect(isNotNaN(r.k)).toBe(true);
   });
 
-  it('Ichimoku handles large arrays', () => {
+  it('Ichimoku handles large arrays', async () => {
     const r = computeIchimoku(bigHighs, bigLows, bigCloses);
     expect(r.conversionLine).not.toBeNull();
     expect(r.baseLine).not.toBeNull();
@@ -470,9 +470,9 @@ describe('Fuzz: Large arrays (2000 elements)', () => {
     expect(r.spanB).not.toBeNull();
   });
 
-  it('computeAllIndicators handles 2000 klines', () => {
+  it('computeAllIndicators handles 2000 klines', async () => {
     const klines = makeKlines(2000);
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
     expect(r.rsi).not.toBeNull();
     expect(r.mfi).not.toBeNull();
@@ -510,53 +510,53 @@ describe('Fuzz: Very small values (1e-8 scale)', () => {
   const tinyLows = tinyCloses.map(c => c - 0.000000002);
   const tinyVolumes = new Array(60).fill(0.00000001);
 
-  it('RSI handles sub-satoshi prices', () => {
+  it('RSI handles sub-satoshi prices', async () => {
     const r = computeRSI(tinyCloses);
     expect(r).not.toBeNull();
     expect(r!).toBeGreaterThanOrEqual(0);
     expect(r!).toBeLessThanOrEqual(100);
   });
 
-  it('BB handles sub-satoshi prices', () => {
+  it('BB handles sub-satoshi prices', async () => {
     const r = computeBB(tinyCloses);
     expect(r).not.toBeNull();
     expect(r!.width).toBeGreaterThanOrEqual(0);
   });
 
-  it('MACD handles sub-satoshi prices', () => {
+  it('MACD handles sub-satoshi prices', async () => {
     const r = computeMACD(tinyCloses);
     expect(r.macd === null || isNotNaN(r.macd)).toBe(true);
   });
 
-  it('ATR handles sub-satoshi prices', () => {
+  it('ATR handles sub-satoshi prices', async () => {
     const r = computeATR(tinyHighs, tinyLows, tinyCloses);
     expect(r === null || r! >= 0).toBe(true);
   });
 
-  it('TSI handles sub-satoshi prices', () => {
+  it('TSI handles sub-satoshi prices', async () => {
     const r = computeTSI(tinyCloses);
     expect(r === null || isNotNaN(r)).toBe(true);
   });
 
-  it('Stochastic handles sub-satoshi prices', () => {
+  it('Stochastic handles sub-satoshi prices', async () => {
     const r = computeStochastic(tinyHighs, tinyLows, tinyCloses);
     expect(r.k === null || isNotNaN(r.k)).toBe(true);
     expect(r.d === null || isNotNaN(r.d)).toBe(true);
   });
 
-  it('Williams R handles sub-satoshi prices', () => {
+  it('Williams R handles sub-satoshi prices', async () => {
     const r = computeWilliamsR(tinyHighs, tinyLows, tinyCloses);
     expect(r === null || isNotNaN(r)).toBe(true);
   });
 
-  it('CMF handles sub-satoshi prices', () => {
+  it('CMF handles sub-satoshi prices', async () => {
     const r = computeCMF(tinyHighs, tinyLows, tinyCloses, tinyVolumes);
     expect(r === null || isNotNaN(r)).toBe(true);
   });
 
-  it('computeAllIndicators handles sub-satoshi klines', () => {
+  it('computeAllIndicators handles sub-satoshi klines', async () => {
     const klines = makeKlines(80, 0.00000001, 0.000000012, 0.000000008, 0.00000001, 0.00000001);
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
   });
 });
@@ -571,35 +571,35 @@ describe('Fuzz: Very large values (1e10 scale)', () => {
   const hugeLows = hugeCloses.map(c => c - 200000000);
   const hugeVolumes = new Array(60).fill(100000000000);
 
-  it('RSI handles billion-scale prices', () => {
+  it('RSI handles billion-scale prices', async () => {
     const r = computeRSI(hugeCloses);
     expect(r).not.toBeNull();
     expect(r!).toBeGreaterThanOrEqual(0);
     expect(r!).toBeLessThanOrEqual(100);
   });
 
-  it('BB handles billion-scale prices', () => {
+  it('BB handles billion-scale prices', async () => {
     const r = computeBB(hugeCloses);
     expect(r).not.toBeNull();
     expect(r!.upper).toBeGreaterThan(r!.middle);
   });
 
-  it('ATR handles billion-scale prices', () => {
+  it('ATR handles billion-scale prices', async () => {
     const r = computeATR(hugeHighs, hugeLows, hugeCloses);
     expect(r === null || (r >= 0 && isNotNaN(r))).toBe(true);
   });
 
-  it('MACD handles billion-scale prices', () => {
+  it('MACD handles billion-scale prices', async () => {
     const r = computeMACD(hugeCloses);
     expect(r.macd === null || isNotNaN(r.macd)).toBe(true);
   });
 
-  it('TSI handles billion-scale prices (returns bounded -100 to 100)', () => {
+  it('TSI handles billion-scale prices (returns bounded -100 to 100)', async () => {
     const r = computeTSI(hugeCloses);
     expect(r === null || (Math.abs(r!) <= 100)).toBe(true);
   });
 
-  it('Stochastic handles billion-scale prices', () => {
+  it('Stochastic handles billion-scale prices', async () => {
     const r = computeStochastic(hugeHighs, hugeLows, hugeCloses);
     if (r.k !== null) {
       expect(r.k).toBeGreaterThanOrEqual(0);
@@ -607,19 +607,19 @@ describe('Fuzz: Very large values (1e10 scale)', () => {
     }
   });
 
-  it('Williams R handles billion-scale prices', () => {
+  it('Williams R handles billion-scale prices', async () => {
     const r = computeWilliamsR(hugeHighs, hugeLows, hugeCloses);
     expect(r === null || (r >= -100 && r <= 0)).toBe(true);
   });
 
-  it('CMF handles billion-scale prices and volume', () => {
+  it('CMF handles billion-scale prices and volume', async () => {
     const r = computeCMF(hugeHighs, hugeLows, hugeCloses, hugeVolumes);
     expect(r === null || (r >= -1 && r <= 1)).toBe(true);
   });
 
-  it('computeAllIndicators handles billion-scale klines', () => {
+  it('computeAllIndicators handles billion-scale klines', async () => {
     const klines = makeKlines(80, 10000000000, 10000002000, 9999998000, 10000000000, 100000000000);
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
   });
 });
@@ -634,27 +634,27 @@ describe('Fuzz: Negative prices', () => {
   const negLows = negCloses.map(c => c - 2);
   const negVolumes = new Array(60).fill(1000);
 
-  it('RSI handles negative closes', () => {
+  it('RSI handles negative closes', async () => {
     const r = computeRSI(negCloses);
     expect(r === null || (r >= 0 && r <= 100)).toBe(true);
   });
 
-  it('BB handles negative closes', () => {
+  it('BB handles negative closes', async () => {
     const r = computeBB(negCloses);
     expect(r === null || isNotNaN(r!.upper)).toBe(true);
   });
 
-  it('ATR handles negative prices', () => {
+  it('ATR handles negative prices', async () => {
     const r = computeATR(negHighs, negLows, negCloses);
     expect(r === null || isNotNaN(r)).toBe(true);
   });
 
-  it('MACD handles negative closes', () => {
+  it('MACD handles negative closes', async () => {
     const r = computeMACD(negCloses);
     expect(r.macd === null || isNotNaN(r.macd)).toBe(true);
   });
 
-  it('Stochastic handles negative prices', () => {
+  it('Stochastic handles negative prices', async () => {
     const r = computeStochastic(negHighs, negLows, negCloses);
     if (r.k !== null) {
       expect(r.k).toBeGreaterThanOrEqual(0);
@@ -662,24 +662,24 @@ describe('Fuzz: Negative prices', () => {
     }
   });
 
-  it('Williams R handles negative prices', () => {
+  it('Williams R handles negative prices', async () => {
     const r = computeWilliamsR(negHighs, negLows, negCloses);
     expect(r === null || (r >= -100 && r <= 0)).toBe(true);
   });
 
-  it('TSI handles negative closes', () => {
+  it('TSI handles negative closes', async () => {
     const r = computeTSI(negCloses);
     expect(r === null || isNotNaN(r)).toBe(true);
   });
 
-  it('CMF handles negative prices', () => {
+  it('CMF handles negative prices', async () => {
     const r = computeCMF(negHighs, negLows, negCloses, negVolumes);
     expect(r === null || isNotNaN(r)).toBe(true);
   });
 
-  it('computeAllIndicators handles negative klines', () => {
+  it('computeAllIndicators handles negative klines', async () => {
     const klines = makeKlines(80, -100, -98, -102, -100, 1000);
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
   });
 });
@@ -691,13 +691,13 @@ describe('Fuzz: Negative prices', () => {
 describe('Fuzz: Zero values', () => {
   const zeros = new Array(60).fill(0);
 
-  it('RSI with all zeros', () => {
+  it('RSI with all zeros', async () => {
     const r = computeRSI(zeros);
     // avgLoss === 0 → returns 100
     expect(r).toBe(100);
   });
 
-  it('BB with all zeros', () => {
+  it('BB with all zeros', async () => {
     const r = computeBB(new Array(20).fill(0));
     expect(r).not.toBeNull();
     expect(r!.middle).toBe(0);
@@ -707,11 +707,11 @@ describe('Fuzz: Zero values', () => {
     expect(r!.position).toBe(0.5);
   });
 
-  it('ATR with all zeros (currentClose=0 → null)', () => {
+  it('ATR with all zeros (currentClose=0 → null)', async () => {
     expect(computeATR(zeros, zeros, zeros)).toBeNull();
   });
 
-  it('MACD with all zeros', () => {
+  it('MACD with all zeros', async () => {
     const r = computeMACD(zeros);
     if (r.macd !== null) {
       expect(r.macd).toBe(0);
@@ -720,45 +720,45 @@ describe('Fuzz: Zero values', () => {
     }
   });
 
-  it('Stochastic with all zeros', () => {
+  it('Stochastic with all zeros', async () => {
     const r = computeStochastic(zeros, zeros, zeros);
     if (r.k !== null) {
       expect(r.k).toBe(50);
     }
   });
 
-  it('Williams R with all zeros', () => {
+  it('Williams R with all zeros', async () => {
     // computeWilliamsR checks range === 0 first → returns -50
     expect(computeWilliamsR(zeros, zeros, zeros)).toBe(-50);
   });
 
-  it('CMF with all zeros (no volume)', () => {
+  it('CMF with all zeros (no volume)', async () => {
     expect(computeCMF(zeros, zeros, zeros, zeros)).toBe(0);
   });
 
-  it('TSI with all zeros', () => {
+  it('TSI with all zeros', async () => {
     expect(computeTSI(zeros)).toBe(0);
   });
 
-  it('VolTrend with all zeros', () => {
+  it('VolTrend with all zeros', async () => {
     expect(computeVolTrend(new Array(20).fill(0))).toBe(0);
   });
 
-  it('VolVsAvg with all zeros (avgVolume=0 → null)', () => {
+  it('VolVsAvg with all zeros (avgVolume=0 → null)', async () => {
     expect(computeVolVsAvg(new Array(20).fill(0))).toBeNull();
   });
 
-  it('OBV with all zeros', () => {
+  it('OBV with all zeros', async () => {
     expect(computeOBV(zeros, zeros)).toBe(0);
   });
 
-  it('ADX with all zeros', () => {
+  it('ADX with all zeros', async () => {
     expect(computeADX(zeros, zeros, zeros)).toBe(0);
   });
 
-  it('computeAllIndicators with zero klines', () => {
+  it('computeAllIndicators with zero klines', async () => {
     const klines = makeKlines(80, 0, 0, 0, 0, 0);
-    const r = computeAllIndicators(klines);
+    const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
   });
 });

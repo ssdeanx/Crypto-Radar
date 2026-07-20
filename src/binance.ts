@@ -144,6 +144,54 @@ export async function fetchAllTickers(): Promise<Map<string, BinanceTicker>> {
 }
 
 /**
+ * 7-day rolling window fields returned by Binance windowSize=7d endpoint.
+ */
+export interface Ticker7d {
+  symbol: string;
+  /** 7-day price change percentage as string e.g. "-4.22" */
+  priceChangePercent: string;
+  /** 7-day absolute price change as string */
+  priceChange: string;
+  /** Weighted average price over 7-day window */
+  weightedAvgPrice: string;
+  /** Highest price in the last 7 days */
+  highPrice: string;
+  /** Lowest price in the last 7 days */
+  lowPrice: string;
+  /** Total base volume over 7-day window */
+  volume: string;
+  /** Total quote volume over 7-day window */
+  quoteVolume: string;
+  /** Last traded price */
+  lastPrice: string;
+}
+
+/**
+ * Fetch 7-day rolling window tickers for the given symbols in batch.
+ *
+ * Uses GET /api/v3/ticker?windowSize=7d — a true rolling 7-day window,
+ * not the fixed 0000 UTC calendar day boundary. The MINI type reduces
+ * payload size vs. FULL.
+ *
+ * @param pairs - Binance trading pairs e.g. ['SOLUSDT', 'BTCUSDT']
+ * @returns Map of symbol -> Ticker7d. Returns empty map on circuit-break.
+ */
+export async function fetchTickers7d(pairs: string[]): Promise<Map<string, Ticker7d>> {
+  if (pairs.length === 0) return new Map();
+  return binanceBreaker.call(async () => {
+    const symbols = pairs.map(s => `"${s}"`).join(',');
+    const url = `${BASE_URL}/api/v3/ticker?windowSize=7d&symbols=[${symbols}]&type=MINI`;
+    const res = await fetchWithRetry(url);
+    const data = (await res.json()) as Ticker7d[];
+    const map = new Map<string, Ticker7d>();
+    for (const t of data) {
+      map.set(t.symbol, t);
+    }
+    return map;
+  }, async () => new Map());
+}
+
+/**
  * Fetch single ticker by pair.
  * @param pair Trading pair e.g. 'SOLUSDT'
  * @returns The Binance ticker data

@@ -121,7 +121,6 @@ export { snapshotOrderBook } from './sources/orderbook.js';
 export { fetchGlobalData } from './sources/cross-asset.js';
 
 // REST API + WS hub
-export { createRestHandler } from './api/rest.js';
 export { createWsHub } from './api/ws.js';
 
 // ML Pipeline

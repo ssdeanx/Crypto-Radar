@@ -2,7 +2,7 @@
 // Hermes Crypto Radar — Dataset Assembly
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Assembles feature rows + labels into CSV training datasets with
+// Assembles feature rows + labels into JSONL training datasets with
 // chronological train/val/test splits and z-score normalization.
 // Saves normalization statistics for inference-time reuse.
 //
@@ -22,19 +22,6 @@ import { mean, standardDeviation, median } from '../math/index.js';
 /** Default data directory for ML datasets — respects configured dataDir */
 const DATA_DIR = path.join(loadConfig().dataDir, 'ml');
 
-/** Regex for CSV injection — values starting with these chars are dangerous */
-const CSV_INJECTION_RE = /^[=+\-@\t\r]/;
-
-/**
- * Escape a value for CSV output, preventing formula injection.
- * Values starting with =, +, -, @ are prefixed with \t to neutralise them.
- */
-function escapeCsv(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  const s = typeof v === 'number' ? v.toString() : String(v);
-  if (CSV_INJECTION_RE.test(s)) return `\t${s}`;
-  return s;
-}
 
 /**
  * Assemble a training dataset from feature rows and label rows.
@@ -44,7 +31,7 @@ function escapeCsv(v: unknown): string {
  * 2. Drop rows with NaN/Infinity in feature columns
  * 3. Chronological split into train/val/test
  * 4. Z-score normalize features using training set statistics
- * 5. Write CSV files
+ * 5. Write JSONL files (one JSON object per line)
  *
  * F5: Normalization statistics include medians for inference-time
  *     NaN/Infinity fill.
@@ -210,26 +197,30 @@ export function assembleDataset(
     }
   }
 
-  // 7. Write CSV files
-  const header = ['symbol', 'interval', 'open_time', ...featureNames, 'label_class'];
+  // 7. Write JSONL files (one JSON object per line)
+  // Column ordering: symbol, interval, open_time, ...featureNames, label_class
+  const outputCols = ['symbol', 'interval', 'open_time', ...featureNames, 'label_class'];
 
   const id = randomUUID().slice(0, 8);
 
-  const writeCsv = (rows: JoinedRow[], suffix: string): string => {
-    const filePath = `${outputPathPrefix}_${suffix}_${id}.csv`;
-    const lines: string[] = [header.join(',')];
+  const writeJsonl = (rows: JoinedRow[], suffix: string): string => {
+    const filePath = `${outputPathPrefix}_${suffix}_${id}.jsonl`;
+    const lines: string[] = [];
     for (const row of rows) {
-      const values = header.map(h => escapeCsv(row[h]));
-      lines.push(values.join(','));
+      // Build object with consistent column ordering for readability
+      const obj: Record<string, unknown> = {};
+      for (const col of outputCols) {
+        obj[col] = row[col] ?? null;
+      }
+      lines.push(JSON.stringify(obj));
     }
-    // Ensure newline at end
     fs.writeFileSync(filePath, lines.join('\n') + '\n', 'utf-8');
     return filePath;
   };
 
-  const trainPath = writeCsv(trainSet, 'train');
-  const valPath = writeCsv(valSet, 'val');
-  const testPath = writeCsv(testSet, 'test');
+  const trainPath = writeJsonl(trainSet, 'train');
+  const valPath = writeJsonl(valSet, 'val');
+  const testPath = writeJsonl(testSet, 'test');
 
   // 8. Write normalization stats as JSON alongside
   const statsPath = `${outputPathPrefix}_norm_${id}.json`;

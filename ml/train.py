@@ -168,11 +168,11 @@ def _feature_importance(model, feature_cols: list[str]) -> dict:
             val_col = "Importances" if "Importances" in imp.columns else imp.columns[-1]
             if "Feature Name" in imp.columns:
                 return {
-                    str(r["Feature Name"]): float(r[val_col]) for _, r in imp.iterrows()
+                    r["Feature Name"]: float(r[val_col]) for _, r in imp.iterrows()
                 }
             # 'Feature Id' is a 0-based positional index into feature_cols
             return {
-                str(feature_cols[int(r["Feature Id"])]): float(r[val_col])
+                feature_cols[int(r["Feature Id"])]: float(r[val_col])
                 for _, r in imp.iterrows()
             }
         return dict(zip(feature_cols, [float(v) for v in imp]))
@@ -199,7 +199,7 @@ def train(args: argparse.Namespace) -> None:
 
     # ── Read dataset ──
     try:
-        df = pd.read_json(str(data_path), lines=True)
+        df = pd.read_json(data_path, lines=True)
     except Exception as e:
         logger.error("Failed to read JSONL: %s", e)
         print(json.dumps({"error": f"JSONL read error: {e}"}))
@@ -446,7 +446,7 @@ def train(args: argparse.Namespace) -> None:
         "accuracy": float(accuracy_score(y_test, y_pred)),
         "f1_weighted": float(f1_score(y_test, y_pred, average="weighted")),
         "f1_macro": float(f1_score(y_test, y_pred, average="macro")),
-        "test_samples": int(len(y_test)),
+        "test_samples": len(y_test),
         "features": len(feature_cols),
         "class_distribution_train": class_dist,
         "n_classes": n_classes,
@@ -652,8 +652,8 @@ def _run_optuna(args, X_train, y_train, prediction_times_series) -> dict:
     best = study.best_trial
     return {
         "learning_rate": float(best.params["learning_rate"]),
-        "depth": int(best.params["depth"]),
-        "l2_leaf_reg": int(best.params["l2_leaf_reg"]),
+        "depth": best.params["depth"],
+        "l2_leaf_reg": best.params["l2_leaf_reg"],
     }
 
 
@@ -671,7 +671,7 @@ def _run_purged_cv(
     from purgedcv import WalkForwardSplit
 
     data_path = Path(args.data)
-    df = pd.read_json(str(data_path), lines=True)
+    df = pd.read_json(data_path, lines=True)
     df = df.sort_values("open_time").reset_index(drop=True)
     exclude_cols = {"symbol", "interval", "open_time", "label_class"}
     feat = [
@@ -767,7 +767,7 @@ def _run_shap(args, model, X_test, feature_cols, output_dir) -> str:
     else:
         cols = feature_cols
 
-    fi_shap = {str(cols[i]): float(mean_abs[i]) for i in range(len(cols))}
+    fi_shap = {cols[i]: float(mean_abs[i]) for i in range(len(cols))}
     top = sorted(fi_shap.items(), key=lambda x: -x[1])
     expected = None
     try:

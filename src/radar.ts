@@ -10,13 +10,13 @@ import type {
 import type { Store } from './store/db.js';
 import { getTokensByChain, getBinancePair } from './tokens.js';
 import type { TokenDef } from './tokens.js';
-import { fetchAllTickers, fetchKlines } from './binance.js';
+import { fetchAllTickers, fetchKlines, fetchTickers7d } from './binance.js';
 import { fetchSimplePrices } from './coingecko.js';
 import type { CoinGeckoPrice } from './coingecko.js';
 import { fetchOnChainMetrics } from './onchain.js';
 import type { OnChainMetrics } from './onchain.js';
-import { computeAllIndicators } from './indicators.js';
-import { fetchAndMatchNews } from './news.js';
+import { batchComputeAllIndicators } from './indicators.js';
+import { fetchAndMatchNews, appendNewsToJsonl } from './news.js';
 import { computeSignals } from './signals.js';
 import { logger } from './core/logger.js';
 import { getGlobalCache, resetGlobalCache } from './core/cache.js';
@@ -199,6 +199,20 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     }
   }
 
+  // Fetch 7d rolling window tickers in parallel (non-fatal if it fails)
+  const cacheKey7d = `tickers7d:${options.chain ?? 'all'}`;
+  let tickers7d = getGlobalCache().get<Map<string, import('./binance.js').Ticker7d>>(cacheKey7d);
+  if (!tickers7d) {
+    try {
+      const pairs = Array.from(rawTickers.keys());
+      tickers7d = await fetchTickers7d(pairs);
+      getGlobalCache().set(cacheKey7d, tickers7d, 300_000);
+    } catch (err) {
+      log.warn('Failed to fetch 7d tickers from Binance', { error: err instanceof Error ? err.message : String(err) });
+      tickers7d = new Map();
+    }
+  }
+
   const tokens = options.chain ? getTokensByChain(options.chain) : getTokensByChain(undefined);
   const filteredTokens = options.filter && options.filter.length > 0
     ? tokens.filter(t => options.filter!.includes(t.sym)) : tokens;
@@ -215,12 +229,26 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     // Non-fatal — Binance is primary source
   }
 
-  const tickers: EnrichedTicker[] = [];
+  const enrichedTickers: EnrichedTicker[] = [];
   for (const token of filteredTokens) {
     const pair = getBinancePair(token);
     const raw = rawTickers.get(pair);
     if (raw) {
-      tickers.push(enrichTicker(raw, token, runId, tsUtc));
+      const enriched = enrichTicker(raw, token, runId, tsUtc);
+      // Merge 7d fields if available
+      const t7d = tickers7d?.get(pair);
+      if (t7d) {
+        const high7d = parseFloat(t7d.highPrice);
+        const low7d  = parseFloat(t7d.lowPrice);
+        enriched.priceChangePct7d    = parseFloat(t7d.priceChangePercent);
+        enriched.weightedAvgPrice7d  = parseFloat(t7d.weightedAvgPrice);
+        enriched.highPrice7d         = high7d;
+        enriched.lowPrice7d          = low7d;
+        enriched.volume7d            = parseFloat(t7d.volume);
+        enriched.quoteVolume7d       = parseFloat(t7d.quoteVolume);
+        enriched.rangeWidth7d        = high7d > 0 ? (high7d - low7d) / high7d : 0;
+      }
+      enrichedTickers.push(enriched);
     } else if (cgPrices.has(token.id)) {
       // Fallback: use CoinGecko price for tokens without a Binance pair
       const cg = cgPrices.get(token.id)!;
@@ -244,7 +272,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
         openTime: 0, closeTime: 0,
         firstId: 0, lastId: 0, count: 0,
       };
-      tickers.push(enrichTicker(synthetic, token, runId, tsUtc));
+      enrichedTickers.push(enrichTicker(synthetic, token, runId, tsUtc));
     }
   }
 
@@ -253,8 +281,8 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
       : options.sortBy === 'volume' ? 'quoteVolume' as const
       : options.sortBy === 'momentum' || options.sortBy === 'signal' ? 'momentum' as const
       : 'symbol' as const;
-    if (sortKey === 'symbol') tickers.sort((a, b) => a.symbol.localeCompare(b.symbol));
-    else tickers.sort((a, b) => b[sortKey] - a[sortKey]);
+    if (sortKey === 'symbol') enrichedTickers.sort((a, b) => a.symbol.localeCompare(b.symbol));
+    else enrichedTickers.sort((a, b) => b[sortKey] - a[sortKey]);
   }
 
   const technicals = new Map<string, Map<string, TechnicalIndicators>>();
@@ -262,36 +290,67 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   const KLINE_LIMIT = 200;
 
   if (options.includeTech !== false) {
-    log.info(`Computing technical indicators for ${tickers.length} tokens across ${intervals.length} intervals...`);
-    const BATCH_SIZE = 5;
-    for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
-      const batch = tickers.slice(i, i + BATCH_SIZE);
-      await Promise.all(batch.map(async (t) => {
-        try {
-          const pair = getBinancePair(
-            getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
-              id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
-            },
-          );
-          const perTokenTechs = new Map<string, TechnicalIndicators>();
-          await Promise.all(intervals.map(async (interval) => {
-            const ck = `${pair}:${interval}`;
-            if (!klineCache.has(ck)) {
-              klineCache.set(ck, await fetchKlines(pair, interval, KLINE_LIMIT));
-            }
-            const klines = klineCache.get(ck)!;
-            const tech = computeAllIndicators(klines);
-            perTokenTechs.set(interval, tech);
-            if (interval === '1h') {
-              if (tech.obv != null) t.obv = tech.obv;
-              if (tech.volVsAvg != null) t.volVsAvg = tech.volVsAvg;
-            }
-          }));
-          technicals.set(t.symbol, perTokenTechs);
-        } catch (err) {
-          log.warn(`Failed to compute indicators for ${t.symbol}`, { error: err instanceof Error ? err.message : String(err) });
+    log.info(`Computing technical indicators for ${enrichedTickers.length} tokens across ${intervals.length} intervals...`);
+    
+    // Step 1: Pre-fetch all Klines for all pairs and intervals
+    const pairs = enrichedTickers.map(t => ({
+      ticker: t,
+      pair: getBinancePair(
+        getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
+          id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
+        }
+      )
+    }));
+
+    await Promise.all(pairs.map(async ({ pair }) => {
+      await Promise.all(intervals.map(async (interval) => {
+        const ck = `${pair}:${interval}`;
+        if (!klineCache.has(ck)) {
+          try {
+            klineCache.set(ck, await fetchKlines(pair, interval, KLINE_LIMIT));
+          } catch (err) {
+            log.warn(`Failed to fetch klines for ${pair} ${interval}`, { error: err instanceof Error ? err.message : String(err) });
+          }
         }
       }));
+    }));
+
+    // Step 2: Batch compute indicators per interval
+    const intervalTechnicals = new Map<string, Record<string, TechnicalIndicators>>();
+    for (const interval of intervals) {
+      const batches: Record<string, Kline[]> = {};
+      for (const { pair, ticker } of pairs) {
+        const ck = `${pair}:${interval}`;
+        const klines = klineCache.get(ck);
+        if (klines && klines.length > 0) {
+          batches[ticker.symbol] = klines;
+        }
+      }
+      if (Object.keys(batches).length > 0) {
+        try {
+          const results = await batchComputeAllIndicators(batches);
+          intervalTechnicals.set(interval, results);
+        } catch (err) {
+          log.warn(`Failed batch compute for interval ${interval}`, { error: err instanceof Error ? err.message : String(err) });
+        }
+      }
+    }
+
+    // Step 3: Apply computed technicals back to tokens
+    for (const { ticker } of pairs) {
+      const perTokenTechs = new Map<string, TechnicalIndicators>();
+      for (const interval of intervals) {
+        const results = intervalTechnicals.get(interval);
+        if (results && results[ticker.symbol]) {
+          const tech = results[ticker.symbol]!;
+          perTokenTechs.set(interval, tech);
+          if (interval === '1h') {
+            if (tech.obv != null) ticker.obv = tech.obv;
+            if (tech.volVsAvg != null) ticker.volVsAvg = tech.volVsAvg;
+          }
+        }
+      }
+      technicals.set(ticker.symbol, perTokenTechs);
     }
   }
 
@@ -310,6 +369,13 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     } else {
       newsMatches = cached;
     }
+  }
+
+  // Write news matches to JSONL file (non-fatal)
+  try {
+    appendNewsToJsonl(newsMatches, config.dataDir);
+  } catch (err) {
+    log.warn('Failed to write news JSONL', { error: err instanceof Error ? err.message : String(err) });
   }
 
   // 4. On-chain metrics (DeFiLlama) — opt-in via config or flag
@@ -331,12 +397,12 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     const oneHr = perInterval.get('1h') ?? perInterval.values().next().value ?? null;
     if (oneHr) singleTechs.set(sym, oneHr);
   }
-  const signals = computeSignals(tickers, singleTechs, newsMatches, onchain);
+  const signals = computeSignals(enrichedTickers, singleTechs, newsMatches, onchain);
 
   const engine = new StrategyEngine();
   const aggregatedSignals: AggregatedSignal[] = [];
 
-  for (const t of tickers) {
+  for (const t of enrichedTickers) {
     const tokenNews = newsMatches.filter(n => n.symbol === t.symbol);
     const pair = getBinancePair(
       getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
@@ -382,26 +448,26 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   }
 
   if (!options.noLog) {
-    await appendToLog(tickers, config.dataDir, 'crypto-radar-log.csv', csvHeader(), toCSV);
+    await appendToLog(enrichedTickers, config.dataDir, 'crypto-radar-log.csv', csvHeader(), toCSV);
     await appendToLog(newsMatches, config.dataDir, 'crypto-radar-news.csv',
       NEWS_CSV_HEADER, toNewsCSV);
   }
 
   const durationMs = Date.now() - startTime;
-  const run: RadarRun = { runId, tsUtc, numTokens: tickers.length, numSignals: signals.length, durationMs };
-  log.info(`Scan complete: ${tickers.length} tokens, ${durationMs}ms`);
+  const run: RadarRun = { runId, tsUtc, numTokens: enrichedTickers.length, numSignals: signals.length, durationMs };
+  log.info(`Scan complete: ${enrichedTickers.length} tokens, ${durationMs}ms`);
 
   if (options.store) {
     try {
       const store: Store = options.store as Store;
-      await store.persistRun({ tickers, signals, newsMatches });
-      log.info(`Archived ${tickers.length} tickers, ${signals.length} signals, ${newsMatches.length} news items`);
+      await store.persistRun({ tickers: enrichedTickers, signals, newsMatches });
+      log.info(`Archived ${enrichedTickers.length} tickers, ${signals.length} signals, ${newsMatches.length} news items`);
     } catch (err) {
       log.warn('Failed to persist radar run', { error: String(err) });
     }
   }
 
-  return { tickers, technicals, newsMatches, signals, aggregatedSignals, onchain, run };
+  return { tickers: enrichedTickers, technicals, newsMatches, signals, aggregatedSignals, onchain, run };
 }
 
 async function appendToLog<T>(

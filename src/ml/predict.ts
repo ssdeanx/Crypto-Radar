@@ -6,8 +6,9 @@
 // computes features for the latest kline window, and emits predictions
 // into the store.
 //
-// F3: Batching — all symbols are sent in a single CSV block to the
-//     subprocess, not one subprocess per symbol.
+// F3: Batching — all symbols are sent in a single JSONL block to the
+//     subprocess, not one subprocess per symbol. JSONL preserves native
+//     numeric types and null values without CSV escaping or type coercion.
 // ═══════════════════════════════════════════════════════════════════════
 
 import * as path from 'node:path';
@@ -17,9 +18,10 @@ import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import type { Store } from '../store/db.js';
 import { buildFeatures, enrichFeatures } from './features.js';
-import type { FeatureRow, PredictionResult, NormalizationStats } from './types.js';
+import type { FeatureRow, PredictionResult, NormalizationStats, PredictContractHeader } from './types.js';
 import { normalizeRow } from './dataset.js';
 import { logger } from '../core/logger.js';
+import { loadConfig } from '../core/config.js';
 
 const log = logger.child({ module: 'ml:predict' });
 
@@ -27,7 +29,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /** Default Python path for subprocess inference */
-const PYTHON = process.env.RADAR__ML_PYTHON ?? 'python3';
+let PYTHON = process.env.RADAR__ML_PYTHON ?? 'python3';
+if (!process.env.RADAR__ML_PYTHON) {
+  const venvPath = path.resolve(process.cwd(), '.venv-ml', 'bin', 'python');
+  if (existsSync(venvPath)) {
+    PYTHON = venvPath;
+  }
+}
 
 /** Default model path (relative to project root) */
 const DEFAULT_MODEL_PATH = resolveActiveModel() ?? resolveModelPath() ?? path.resolve(__dirname, '../../ml/models/model.joblib');
@@ -48,7 +56,8 @@ const SUBPROCESS_TIMEOUT_MS = 60_000;
  * Falls back to null if MANIFEST doesn't exist or is unreadable.
  */
 export function resolveActiveModel(modelsDir?: string): string | null {
-  const dir = modelsDir ?? path.resolve(__dirname, '../../ml/models');
+  let dir = modelsDir ?? path.join(loadConfig().dataDir, 'ml', 'models');
+  if (!existsSync(dir)) dir = path.resolve(process.cwd(), 'ml', 'models');
   const manifestPath = path.resolve(dir, 'MANIFEST.json');
   if (!existsSync(manifestPath)) return null;
   try {
@@ -71,7 +80,8 @@ export function resolveActiveModel(modelsDir?: string): string | null {
  * Returns null if no model files exist at all.
  */
 export function resolveModelPath(modelsDir?: string): string | null {
-  const dir = modelsDir ?? path.resolve(__dirname, '../../ml/models');
+  let dir = modelsDir ?? path.join(loadConfig().dataDir, 'ml', 'models');
+  if (!existsSync(dir)) dir = path.resolve(process.cwd(), 'ml', 'models');
   if (!existsSync(dir)) return null;
   const files = readdirSync(dir).filter(f => /^model_.*\.joblib$/.test(f));
   if (files.length === 0) {
@@ -88,26 +98,12 @@ export function resolveModelPath(modelsDir?: string): string | null {
  * Returns null if no norm stats file exists.
  */
 export function resolveNormStatsPath(dataDir?: string): string | null {
-  const dir = dataDir ?? path.resolve(__dirname, '../../data/ml');
+  const dir = dataDir ?? path.join(loadConfig().dataDir, 'ml');
   if (!existsSync(dir)) return null;
   const files = readdirSync(dir).filter(f => f.endsWith('_norm_.json') || /_norm_[a-f0-9]+\.json$/.test(f));
   if (files.length === 0) return null;
   files.sort((a, b) => statSync(path.resolve(dir, b)).mtimeMs - statSync(path.resolve(dir, a)).mtimeMs);
   return path.resolve(dir, files[0]!);
-}
-/**
- * Escape a value for CSV — handles commas, newlines, quotes, and
- * leading whitespace for safe round-trip through pandas.read_csv.
- */
-function escapeCsvVal(v: unknown): string {
-  if (v === null || v === undefined) return '';
-  const s = typeof v === 'number' ? v.toString() : String(v);
-  if (s === '') return '';
-  // Quote if the value contains commas, newlines, double-quotes, or leading whitespace
-  if (s.includes(',') || s.includes('\n') || s.includes('\r') || s.includes('"') || /^[\s]/.test(s)) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
 }
 
 /**
@@ -147,10 +143,10 @@ export async function batchPredict(
   const featureRows: FeatureRow[] = [];
   const allKlinesMap = new Map<string, number[]>();
 
-  const btcKlines = store.getKlines('BTCUSDT', interval, { limit: 200, order: 'desc' }).reverse();
-  const ethKlines = store.getKlines('ETHUSDT', interval, { limit: 200, order: 'desc' }).reverse();
-  const solKlines = store.getKlines('SOLUSDT', interval, { limit: 200, order: 'desc' }).reverse();
-  const polKlines = store.getKlines('POLUSDT', interval, { limit: 200, order: 'desc' }).reverse();
+  const btcKlines = (await store.getKlines('BTCUSDT', interval, { limit: 200, order: 'desc' })).reverse();
+  const ethKlines = (await store.getKlines('ETHUSDT', interval, { limit: 200, order: 'desc' })).reverse();
+  const solKlines = (await store.getKlines('SOLUSDT', interval, { limit: 200, order: 'desc' })).reverse();
+  const polKlines = (await store.getKlines('POLUSDT', interval, { limit: 200, order: 'desc' })).reverse();
   const referenceKlines = new Map<string, number[]>();
   if (btcKlines.length >= 20) referenceKlines.set('BTCUSDT', btcKlines.map(k => k.close));
   if (ethKlines.length >= 20) referenceKlines.set('ETHUSDT', ethKlines.map(k => k.close));
@@ -160,7 +156,7 @@ export async function batchPredict(
   for (const symbol of symbols) {
     try {
       // Fetch latest 200 klines (sufficient for all indicators)
-      const klines = store.getKlines(symbol, interval, { limit: 200, order: 'desc' }).reverse();
+      const klines = (await store.getKlines(symbol, interval, { limit: 200, order: 'desc' })).reverse();
       if (klines.length < 60) {
         log.debug(`Skipping ${symbol}: insufficient klines (${klines.length})`);
         continue;
@@ -168,10 +164,10 @@ export async function batchPredict(
       allKlinesMap.set(symbol, klines.map(k => k.close));
 
       // Fetch cross-asset and funding for alignment (F2)
-      const crossAsset = store.getCrossAsset(100);
-      const funding = store.getFunding(symbol, 50);
+      const crossAsset = await store.getCrossAsset(100);
+      const funding = await store.getFunding(symbol, 50);
 
-      const rows = buildFeatures(
+      const rows = await buildFeatures(
         symbol, interval, klines,
         { includeReturns: true, includeIndicators: true, includeCrossAsset: true, includeFutures: true, includeTemporal: true },
         crossAsset, funding, referenceKlines,
@@ -202,7 +198,7 @@ export async function batchPredict(
     return [];
   }
 
-  // F3: Send all rows as a single CSV block to the subprocess
+  // F3: Send all rows as a single JSONL block to the subprocess
   const modelId = path.basename(modelPath);
 
   try {
@@ -232,7 +228,9 @@ function validateDirection(v: unknown): -1 | 0 | 1 {
 /**
  * Run Python subprocess inference (F3: batch mode).
  *
- * Writes feature rows as CSV to subprocess stdin, reads JSON array from stdout.
+ * Writes feature rows as JSONL to subprocess stdin (one JSON object per
+ * line), reads JSON array from stdout. JSONL preserves native numeric types
+ * and null values without any CSV escaping or type coercion.
  */
 async function runSubprocessInference(
   rows: FeatureRow[],
@@ -245,23 +243,35 @@ async function runSubprocessInference(
       return;
     }
 
-    // Build CSV header from first row's keys (excluding symbol, interval, open_time)
     const firstRow = rows[0];
     if (!firstRow) {
       resolve([]);
       return;
     }
     const excludeKeys = new Set(['symbol', 'interval', 'open_time']);
-    const featureNames = Object.keys(firstRow).filter(k => !excludeKeys.has(k));
-    const header = featureNames.join(',');
 
-    // Build CSV body using escapeCsvVal for safety
-    const csvLines: string[] = [header];
+    // Build JSONL: one JSON object per feature row, feature keys only
+    const jsonlLines: string[] = [];
     for (const row of rows) {
-      const values = featureNames.map(fn => escapeCsvVal(row[fn]));
-      csvLines.push(values.join(','));
+      const obj: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(row)) {
+        if (!excludeKeys.has(k)) obj[k] = v;
+      }
+      jsonlLines.push(JSON.stringify(obj));
     }
-    const csvData = csvLines.join('\n');
+
+    // Prepend contract header: validates TS-PY feature alignment
+    const features = Object.keys(firstRow).filter(k => !excludeKeys.has(k));
+    const header: PredictContractHeader & Record<string, unknown> = {
+      _header: true,
+      _features: features,
+      _featureCount: features.length,
+      _timestamp: new Date().toISOString(),
+    };
+    jsonlLines.unshift(JSON.stringify(header));
+
+    const jsonlData = jsonlLines.join('\n');
+
     // Symbol map for matching results back to input rows
     const symbolMap = rows.map(r => r.symbol);
     // Spawn Python subprocess
@@ -340,8 +350,8 @@ async function runSubprocessInference(
       }
     });
 
-    // Write CSV to stdin and close
-    proc.stdin.write(csvData);
+    // Write JSONL to stdin and close
+    proc.stdin.write(jsonlData);
     proc.stdin.end();
   });
 }
@@ -373,6 +383,7 @@ export async function persistPredictions(
       horizon: r.horizon,
       ml_score: r.confidence,
       features_hash: null,
+      reasoning: r.reasoning ?? undefined,
     });
   }
   log.info(`Persisted ${results.length} predictions for model ${modelId}`);

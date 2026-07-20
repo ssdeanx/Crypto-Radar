@@ -45,7 +45,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const { email, password, name } = parsed.data;
 
     // Check if user already exists
-    const existing = app.store.getUserByEmail(email);
+    const existing = await app.store.getUserByEmail(email);
     if (existing) {
       return reply.status(409).send({
         error: 'Email already registered',
@@ -110,7 +110,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
     const { email, password } = parsed.data;
 
-    const user = app.store.getUserByEmail(email);
+    const user = await app.store.getUserByEmail(email);
     if (!user) {
       return reply.status(401).send({
         error: 'Invalid email or password',
@@ -151,7 +151,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     preHandler: [app.authenticate],
   }, async (request, reply) => {
     const decoded = await request.jwtVerify<{ id: string }>();
-    const user = app.store.getUserById(decoded.id);
+    const user = await app.store.getUserById(decoded.id);
     if (!user) {
       return reply.status(404).send({
         error: 'User not found',

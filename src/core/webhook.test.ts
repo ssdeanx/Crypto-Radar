@@ -4,7 +4,6 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { sendAlert, formatAlertMessage } from './webhook.js';
-import type { WebhookType } from './webhook.js';
 
 // Mock config so we can control webhook URLs
 vi.mock('./config.js', () => ({
@@ -12,6 +11,8 @@ vi.mock('./config.js', () => ({
 }));
 
 import { loadConfig } from './config.js';
+import type { RadarConfig } from './config.js';
+
 const mockLoadConfig = vi.mocked(loadConfig);
 
 describe('sendAlert', () => {
@@ -28,7 +29,7 @@ describe('sendAlert', () => {
   });
 
   it('does nothing when no webhooks are configured', async () => {
-    mockLoadConfig.mockReturnValue({} as any);
+    mockLoadConfig.mockReturnValue({} as Partial<RadarConfig> as RadarConfig);
     await sendAlert('test message');
     expect(mockFetch).not.toHaveBeenCalled();
   });
@@ -36,7 +37,7 @@ describe('sendAlert', () => {
   it('sends to Discord webhook', async () => {
     mockLoadConfig.mockReturnValue({
       webhooks: { discord: 'https://discord.com/api/webhooks/test' },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     await sendAlert('Hello from crypto-radar');
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -55,7 +56,7 @@ describe('sendAlert', () => {
       webhooks: {
         telegram: { botToken: '12345:ABC', chatId: '-100987' },
       },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     await sendAlert('Telegram alert');
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -76,11 +77,11 @@ describe('sendAlert', () => {
         discord: 'https://discord.com/api/webhooks/discord-test',
         telegram: { botToken: 'bot:token', chatId: 'chat-id' },
       },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     await sendAlert('broadcast message');
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
-    const urls = mockFetch.mock.calls.map((c: any) => c[0] as string);
+    const urls = mockFetch.mock.calls.map((c: unknown[]) => c[0] as string);
     expect(urls).toContain('https://discord.com/api/webhooks/discord-test');
     expect(urls.some((u: string) => u.includes('api.telegram.org'))).toBe(true);
   });
@@ -91,7 +92,7 @@ describe('sendAlert', () => {
         discord: 'https://discord.com/api/webhooks/d',
         telegram: { botToken: 'b:t', chatId: 'c' },
       },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     await sendAlert('discord only', 'discord');
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -104,7 +105,7 @@ describe('sendAlert', () => {
         discord: 'https://discord.com/api/webhooks/d',
         telegram: { botToken: 'b:t', chatId: 'c' },
       },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     await sendAlert('telegram only', 'telegram');
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -114,7 +115,7 @@ describe('sendAlert', () => {
   it('logs warning on non-ok response from Discord', async () => {
     mockLoadConfig.mockReturnValue({
       webhooks: { discord: 'https://discord.com/api/webhooks/bad' },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({ ok: false, status: 429 } as Response);
 
@@ -129,7 +130,7 @@ describe('sendAlert', () => {
       webhooks: {
         telegram: { botToken: 'b:t', chatId: 'c' },
       },
-    } as any);
+    } as Partial<RadarConfig> as RadarConfig);
     mockFetch.mockReset();
     mockFetch.mockResolvedValue({ ok: false, status: 400 } as Response);
 

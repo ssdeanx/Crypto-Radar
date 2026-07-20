@@ -11,6 +11,8 @@ import RssParser from 'rss-parser';
 import type { NewsArticle, NewsMatch, TokenDef } from './types.js';
 import { getTokenList } from './tokens.js';
 import { recordFeedResult, getDeadFeeds } from './core/feed-monitor.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 // ── Custom RSS Item Fields ───────────────────────────────────────────
 // rss-parser's default Item type covers the common fields. These
@@ -96,6 +98,11 @@ const SOURCE_TIERS: Record<string, number> = {
   'Crypto Briefing DeFi': 0.8,
   'Google News DeFi': 0.7,
 };
+
+/** Minimum relevance score to include a news match. Tier 1 feeds use this directly;
+ *  lower-tier feeds require 0.2 higher relevance to pass (tier penalty). */
+const MIN_MATCH_RELEVANCE = 0.5;
+const TIER_PENALTY_THRESHOLD = 0.2;  // extra relevance needed for tier 3+ feeds
 
 // Poison headlines to filter out (SEO spam, roundups, etc.)
 const POISON_PATTERNS = [
@@ -321,6 +328,20 @@ function normalizeHeadline(headline: string): string {
     .slice(0, 80);
 }
 
+/** Deduplicate matches by headline similarity — keep highest-tier source. */
+export function deduplicateMatches(matches: NewsMatch[]): NewsMatch[] {
+  const seen = new Map<string, NewsMatch>();
+  for (const match of matches) {
+    // Normalize headline: lowercase, strip whitespace, truncate to 80 chars
+    const key = match.headline.toLowerCase().trim().slice(0, 80);
+    const existing = seen.get(key);
+    if (!existing || (match.tier ?? 99) < (existing.tier ?? 99)) {
+      seen.set(key, match);
+    }
+  }
+  return Array.from(seen.values());
+}
+
 /**
  * Fetch, parse, match, and score news from all RSS feeds.
  *
@@ -344,6 +365,11 @@ export async function fetchAndMatchNews(
 
   // Pre-compute dead feeds to skip (avoid wasting HTTP calls)
   const deadFeeds = new Set(getDeadFeeds().map(f => f.name));
+
+  // Build feed name → tier lookup for relevance penalty calculation
+  const feedNameToTier = new Map<string, number>(
+    NEWS_FEEDS.map(f => [f.name, f.tier]),
+  );
 
   /** Process a single feed's articles */
   async function processFeed(feed: FeedDef): Promise<NewsArticle[]> {
@@ -403,7 +429,10 @@ export async function fetchAndMatchNews(
 
           for (const token of tokens) {
             let relevance = matchToken(article.headline, article.description, token, article.source);
-            if (relevance < 0.5) continue;
+            // Apply relevance filter: tier 3+ feeds need higher relevance
+            const feedTier = feedNameToTier.get(article.source) ?? 1;
+            const tierPenalty = feedTier >= 3 ? TIER_PENALTY_THRESHOLD : 0;
+            if (relevance < MIN_MATCH_RELEVANCE + tierPenalty) continue;
 
             // Sentiment boost: +0.1 if bullish keywords dominate
             const sentiment = analyzeSentiment(article.headline + ' ' + article.description);
@@ -425,6 +454,7 @@ export async function fetchAndMatchNews(
               domain: article.domain,
               relevance: Math.round(Math.max(0, relevance) * 100) / 100,
               url: article.url,
+              tier: feedTier,
             });
           }
         }
@@ -432,5 +462,54 @@ export async function fetchAndMatchNews(
     }
   }
 
-  return matches;
+  return deduplicateMatches(matches);
+}
+
+/**
+ * Append matched news articles to the JSONL news output file.
+ *
+ * This is a new output format for structured news data, separate from the main
+ * radar output. Each row contains the article metadata, relevance score,
+ * computed sentiment, and feed tier for downstream consumption.
+ *
+ * @param newsMatches - Array of matched news items from fetchAndMatchNews
+ * @param dataDir - Data directory for the JSONL output file
+ */
+export function appendNewsToJsonl(newsMatches: NewsMatch[], dataDir: string): void {
+  const filePath = path.join(dataDir, 'crypto-radar-news.jsonl');
+
+  // Build a lookup from feed name → tier from the NEWS_FEEDS definition
+  const feedTiers = new Map<string, number>();
+  for (const feed of NEWS_FEEDS) {
+    feedTiers.set(feed.name, feed.tier);
+  }
+
+  const lines: string[] = [];
+  for (const m of newsMatches) {
+    // Re-compute sentiment for the JSONL row
+    const sentLabel = analyzeSentiment(`${m.headline} ${m.description}`);
+    const sentiment = sentLabel === 'bullish' ? 1 : sentLabel === 'bearish' ? -1 : 0;
+    const tier = feedTiers.get(m.source) ?? 0;
+
+    lines.push(JSON.stringify({
+      ts: m.tsUtc,
+      symbol: m.symbol,
+      feed: m.source,
+      headline: m.headline,
+      url: m.url,
+      relevance: m.relevance,
+      sentiment,
+      tier,
+    }));
+  }
+
+  if (lines.length === 0) return;
+
+  // Ensure the directory exists
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  fs.appendFileSync(filePath, lines.join('\n') + '\n', 'utf-8');
 }

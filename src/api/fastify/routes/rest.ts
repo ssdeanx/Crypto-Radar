@@ -40,7 +40,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     return {
       status: 'ok',
       uptime: Math.floor((Date.now() - parseInt(process.env['RADAR__START_TIME'] ?? '0', 10)) / 1000),
-      stats: store.stats(),
+      stats: await store.stats(),
     };
   });
 
@@ -49,7 +49,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     const { symbol, chain, limit } = request.query as {
       symbol?: string; chain?: string; limit?: string;
     };
-    return store.getLatestTickers({
+    return await store.getLatestTickers({
       symbol: symbol ?? undefined,
       chain: chain ?? undefined,
       limit: intParam(limit, 200),
@@ -58,7 +58,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /api/tickers/:symbol ──
   app.get<{ Params: { symbol: string } }>('/api/tickers/:symbol', async (request, reply) => {
-    const rows = store.getLatestTickers({ symbol: request.params.symbol, limit: 1 });
+    const rows = await store.getLatestTickers({ symbol: request.params.symbol, limit: 1 });
     if (rows.length === 0) {
       return reply.status(404).send({ error: `Symbol not found: ${request.params.symbol}`, code: 'NOT_FOUND' });
     }
@@ -70,7 +70,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     const { symbol, minScore, direction, limit } = request.query as {
       symbol?: string; minScore?: string; direction?: string; limit?: string;
     };
-    return store.getSignals({
+    return await store.getSignals({
       symbol: symbol ?? undefined,
       minScore: minScore !== undefined ? parseFloat(minScore) : undefined,
       direction: direction ?? undefined,
@@ -80,7 +80,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
 
   // ── GET /api/signals/:symbol ──
   app.get<{ Params: { symbol: string } }>('/api/signals/:symbol', async (request, reply) => {
-    const rows = store.getSignals({ limit: 1000 });
+    const rows = await store.getSignals({ limit: 1000 });
     const filtered = rows.filter(r => r.symbol === request.params.symbol);
     if (filtered.length === 0) {
       return reply.status(404).send({ error: `Symbol not found: ${request.params.symbol}`, code: 'NOT_FOUND' });
@@ -93,7 +93,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     const { interval, from, to, limit } = request.query as {
       interval?: string; from?: string; to?: string; limit?: string;
     };
-    return store.getKlines(request.params.symbol, interval ?? '1h', {
+    return await store.getKlines(request.params.symbol, interval ?? '1h', {
       from: from !== undefined ? parseInt(from, 10) : undefined,
       to: to !== undefined ? parseInt(to, 10) : undefined,
       limit: intParam(limit, 500),
@@ -108,10 +108,10 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     const lim = intParam(limit, 50);
 
     switch (t) {
-      case 'funding': return store.getFunding(symbol, lim);
-      case 'oi': return store.getOpenInterest(symbol, lim);
-      case 'lsratio': return store.getLsRatio(symbol, lim);
-      case 'liquidations': return store.getLiquidations(symbol, lim);
+      case 'funding': return await store.getFunding(symbol, lim);
+      case 'oi': return await store.getOpenInterest(symbol, lim);
+      case 'lsratio': return await store.getLsRatio(symbol, lim);
+      case 'liquidations': return await store.getLiquidations(symbol, lim);
       default:
         return reply.status(400).send({
           error: `Invalid futures type: ${t}`,
@@ -124,13 +124,13 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/orderbook/:symbol ──
   app.get<{ Params: { symbol: string } }>('/api/orderbook/:symbol', async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 50);
-    return store.getOrderBook(request.params.symbol, limit);
+    return await store.getOrderBook(request.params.symbol, limit);
   });
 
   // ── GET /api/news ──
   app.get('/api/news', async (request) => {
     const { symbol, limit } = request.query as { symbol?: string; limit?: string };
-    return store.getNews({
+    return await store.getNews({
       symbol: symbol ?? undefined,
       limit: intParam(limit, 50),
     });
@@ -150,7 +150,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/regime/:symbol ──
   app.get<{ Params: { symbol: string } }>('/api/regime/:symbol', async (request, reply) => {
     const { interval, limit } = request.query as { interval?: string; limit?: string };
-    const rows = store.getKlines(request.params.symbol, interval ?? '1h', {
+    const rows = await store.getKlines(request.params.symbol, interval ?? '1h', {
       limit: intParam(limit, 200),
     });
     if (rows.length < 30) {
@@ -166,7 +166,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
       takerBuyVol: r.taker_buy_vol, takerBuyQuoteVol: r.taker_buy_quote_vol,
       ignore: 0,
     }));
-    const tech = computeAllIndicators(klines);
+    const tech = await computeAllIndicators(klines);
     return detectRegime({
       adx: tech.adx,
       bbWidth: tech.bb?.width ?? null,
@@ -178,7 +178,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/portfolio/trades ──
   app.get('/api/portfolio/trades', async (request) => {
     const { profile, status } = request.query as { profile?: string; status?: string };
-    const trades = store.getPaperTrades(
+    const trades = await store.getPaperTrades(
       profile ?? 'trader1',
       status as 'open' | 'closed' | undefined,
     );
@@ -188,7 +188,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/portfolio ──
   app.get('/api/portfolio', async (request) => {
     const profile = (request.query as { profile?: string }).profile ?? 'trader1';
-    const trades = store.getPaperTrades(profile);
+    const trades = await store.getPaperTrades(profile);
 
     const holdingMap = new Map<string, { quantity: number; avgEntry: number }>();
     let totalPnl = 0;
@@ -239,18 +239,18 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/fear-greed ──
   app.get('/api/fear-greed', async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 30);
-    return store.getFearGreed(limit);
+    return await store.getFearGreed(limit);
   });
 
   // ── GET /api/cross-asset ──
   app.get('/api/cross-asset', async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 50);
-    return store.getCrossAsset(limit);
+    return await store.getCrossAsset(limit);
   });
 
   // ── GET /api/stats ──
   app.get('/api/stats', async () => {
-    return store.stats();
+    return await store.stats();
   });
 
   // ── GET /api/predictions ──
@@ -258,7 +258,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     const { symbol, model_id, minConfidence, limit } = request.query as {
       symbol?: string; model_id?: string; minConfidence?: string; limit?: string;
     };
-    return store.getPredictions({
+    return await store.getPredictions({
       symbol: symbol ?? undefined,
       model_id: model_id ?? undefined,
       minConfidence: minConfidence !== undefined ? parseFloat(minConfidence) : undefined,
@@ -269,7 +269,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/predictions/:symbol ──
   app.get<{ Params: { symbol: string } }>('/api/predictions/:symbol', async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 50);
-    return store.getPredictions({ symbol: request.params.symbol, limit });
+    return await store.getPredictions({ symbol: request.params.symbol, limit });
   });
 
   // ── POST /api/portfolio/trades (from portfolio.ts — registered here so all /api/* is Fastify) ──

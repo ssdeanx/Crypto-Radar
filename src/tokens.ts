@@ -109,6 +109,25 @@ const TOKENS: Record<string, TokenDef> = {
   'jasmycoin':         { id: 'jasmycoin',         sym: 'JASMY', name: 'JasmyCoin',           chain: 'ethereum',                     coingeckoId: 'jasmycoin' },
   'convex-finance':    { id: 'convex-finance',    sym: 'CVX',   name: 'Convex Finance',      chain: 'ethereum',                     coingeckoId: 'convex-finance' },
   '1inch':             { id: '1inch',             sym: '1INCH', name: '1inch',               chain: 'ethereum',                     coingeckoId: '1inch' },
+
+  // ── Research additions: top missing tokens by volume ──
+  'ondo-finance':      { id: 'ondo-finance',      sym: 'ONDO',   name: 'Ondo Finance',      chain: 'ethereum',                       coingeckoId: 'ondo-finance' },
+  'ecash':             { id: 'ecash',             sym: 'XEC',    name: 'eCash',             chain: 'bitcoin-cash',                   coingeckoId: 'ecash' },
+  'mantra':            { id: 'mantra',            sym: 'OM',     name: 'MANTRA',            chain: 'ethereum',                       coingeckoId: 'mantra' },
+  'aerodrome-finance': { id: 'aerodrome-finance', sym: 'AERO',   name: 'Aerodrome',          chain: 'ethereum',                       coingeckoId: 'aerodrome-finance' },
+  'dash':              { id: 'dash',              sym: 'DASH',   name: 'Dash',              chain: 'dash',                           coingeckoId: 'dash' },
+  'pudgy-penguins':    { id: 'pudgy-penguins',    sym: 'PENGU',  name: 'Pudgy Penguins',    chain: 'ethereum',                       coingeckoId: 'pudgy-penguins' },
+  'ordinals':          { id: 'ordinals',          sym: 'ORDI',   name: 'Ordinals',          chain: 'bitcoin',                        coingeckoId: 'ordinals' },
+  'chiliz':            { id: 'chiliz',            sym: 'CHZ',    name: 'Chiliz',            chain: 'ethereum',                       coingeckoId: 'chiliz' },
+  'virtual-protocol':  { id: 'virtual-protocol',  sym: 'VIRTUAL',name: 'Virtual Protocol',  chain: 'ethereum',                       coingeckoId: 'virtual-protocol' },
+  'neo':               { id: 'neo',               sym: 'NEO',    name: 'NEO',               chain: 'neo',                            coingeckoId: 'neo' },
+  'eigenlayer':        { id: 'eigenlayer',        sym: 'EIGEN',  name: 'EigenLayer',        chain: 'ethereum',                       coingeckoId: 'eigenlayer' },
+  'pendle':            { id: 'pendle',            sym: 'PENDLE', name: 'Pendle',            chain: 'ethereum',                       coingeckoId: 'pendle' },
+  'internet-computer': { id: 'internet-computer', sym: 'ICP',    name: 'Internet Computer', chain: 'multi', chains: ['icp'],         coingeckoId: 'internet-computer' },
+  'shiba-inu':         { id: 'shiba-inu',         sym: 'SHIB',   name: 'Shiba Inu',         chain: 'ethereum',                       coingeckoId: 'shiba-inu' },
+  'ethereum-classic':  { id: 'ethereum-classic',  sym: 'ETC',    name: 'Ethereum Classic',  chain: 'ethereum-classic',               coingeckoId: 'ethereum-classic' },
+  'skale':             { id: 'skale',             sym: 'SKL',    name: 'SKALE',             chain: 'ethereum',                       coingeckoId: 'skale' },
+  'kaito':             { id: 'kaito',             sym: 'KAITO',  name: 'Kaito',             chain: 'ethereum',                       coingeckoId: 'kaito' },
 };
 
 /** All token IDs */
@@ -181,25 +200,79 @@ export function getBinancePair(token: TokenDef): string {
 
 /**
  * Get the top N tokens by 24h quote volume from all Binance USDT pairs.
- * Filters to pairs we can map to our token registry.
+ *
+ * Two-pass approach:
+ *   1. Match tickers against the hardcoded TOKENS registry (full metadata).
+ *   2. If fewer than n registry matches are found, synthesize TokenDef
+ *      entries for the remaining highest-volume tickers so the caller
+ *      always gets the top n high-volume tokens (capped at total available).
+ *
  * @param n Number of top tokens to return (default: 50)
  */
 export async function getTopTokensByVolume(n: number = 50): Promise<TokenDef[]> {
   const tickers = await fetchAllUsdtTickers();
-  const entries: Array<{ token: TokenDef; quoteVolume: number }> = [];
+  const registryEntries: Array<{ token: TokenDef; quoteVolume: number }> = [];
+  const unmatched: Array<{ sym: string; quoteVolume: number }> = [];
 
+  // First pass: look up each ticker in the hardcoded token registry
   for (const [symbol, ticker] of tickers) {
-    // Strip the USDT suffix to get the trading symbol for lookup
     const sym = symbol.replace(/USDT$/, '');
     const token = getTokenBySymbol(sym);
+    const qv = parseFloat(ticker.quoteVolume);
     if (token) {
-      entries.push({ token, quoteVolume: parseFloat(ticker.quoteVolume) });
+      registryEntries.push({ token, quoteVolume: qv });
+    } else {
+      unmatched.push({ sym, quoteVolume: qv });
     }
   }
 
-  // Sort descending by quoteVolume and return top N
-  entries.sort((a, b) => b.quoteVolume - a.quoteVolume);
-  return entries.slice(0, n).map(e => e.token);
+  // Sort registry entries descending by volume
+  registryEntries.sort((a, b) => b.quoteVolume - a.quoteVolume);
+
+  // If we have enough registry matches, return top n
+  if (registryEntries.length >= n) {
+    return registryEntries.slice(0, n).map(e => e.token);
+  }
+
+  // Second pass: not enough registry matches — synthesise TokenDefs for
+  // the remaining highest-volume unmatched tickers
+  unmatched.sort((a, b) => b.quoteVolume - a.quoteVolume);
+
+  const result: TokenDef[] = registryEntries.map(e => e.token);
+
+  for (const u of unmatched) {
+    if (result.length >= n) break;
+    result.push({
+      id: u.sym.toLowerCase(),
+      sym: u.sym,
+      name: u.sym,
+      chain: 'multi',
+    });
+  }
+
+  return result;
+}
+
+/**
+ * Validate all registry tokens against live Binance USDT pairs.
+ * Curls live Binance API for every registry token and reports which are
+ * tradeable (positive volume) vs dead/delisted (zero volume or missing pair).
+ */
+export async function validateTokenCoverage(): Promise<{ valid: string[]; dead: string[] }> {
+  const tickers = await fetchAllUsdtTickers();
+  const all = getAllTokens();
+  const valid: string[] = [];
+  const dead: string[] = [];
+  for (const t of all) {
+    const pair = getBinancePair(t);
+    const ticker = tickers.get(pair);
+    if (ticker && Number(ticker.quoteVolume) > 0) {
+      valid.push(t.sym);
+    } else {
+      dead.push(`${t.sym} (${pair})`);
+    }
+  }
+  return { valid, dead };
 }
 
 export type { TokenDef } from './types.js';

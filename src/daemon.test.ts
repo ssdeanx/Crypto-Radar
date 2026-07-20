@@ -41,11 +41,7 @@ import { isDaemonRunning, stopDaemon } from './daemon.js';
 // ── Helpers ──
 
 const originalKill = process.kill;
-function mockResponse() {
-  return { writeHead: vi.fn().mockReturnThis(), end: vi.fn(), setHeader: vi.fn() };
-}
-
-// ═══════════════════════════════════════════════════════════════════════
+// Removed unused mockResponse// ═══════════════════════════════════════════════════════════════════════
 // isDaemonRunning
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -140,7 +136,7 @@ describe('HTTP server', () => {
       prependListener: vi.fn(),
       prependOnceListener: vi.fn(),
       rawListeners: vi.fn(() => []),
-    } as any);
+    } as unknown as import('node:http').Server);
     mockBinance.fetchAllTickers.mockResolvedValue(new Map([['SOLUSDT', { symbol: 'SOLUSDT', lastPrice: '150' }]]));
     mockBinance.fetchKlines.mockResolvedValue([]);
     mockTokens.getTokenList.mockReturnValue([]);

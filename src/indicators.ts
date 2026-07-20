@@ -2,6 +2,9 @@
 // Hermes Crypto Radar — Technical Indicators
 // ═══════════════════════════════════════════════════════════════════════
 
+import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import path from 'node:path';
 import type { Kline, TechnicalIndicators, BBandsResult, MACDResult, StochasticResult, IchimokuResult, ParabolicSarResult, KeltnerChannelsResult, StochRSIResult, ElderRayResult, KSTResult } from './types.js';
 
 /**
@@ -434,58 +437,68 @@ export function computeTSI(
  * @param klines Array of Kline data
  * @returns TechnicalIndicators with all computed values
  */
-export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
-  const closes = klines.map(k => k.close);
-  const highs = klines.map(k => k.high);
-  const lows = klines.map(k => k.low);
-  const volumes = klines.map(k => k.volume);
-  const currentClose = closes[closes.length - 1] ?? 0;
-  const ema50 = ema(closes, 50);
-  const priceVsEma50 = ema50 !== null && ema50 > 0
-    ? ((currentClose - ema50) / ema50) * 100
-    : null;
-  // Same-window range position (0=period low, 1=period high) for the kline
-  // window these indicators are computed over. Divergence detection must use
-  // THIS (not the 24h ticker rangePosPct) so price extremes and the
-  // oscillator share one window (finding #2).
-  const periodHigh = highs.length ? Math.max(...highs) : 0;
-  const periodLow = lows.length ? Math.min(...lows) : 0;
-  const range = periodHigh - periodLow;
-  const rangePosWindow = range > 0 && Number.isFinite(currentClose)
-    ? (currentClose - periodLow) / range
-    : 0.5;
-  return {
-    rsi: computeRSI(closes),
-    mfi: computeMFI(highs, lows, closes, volumes),
-    bb: computeBB(closes),
-    macd: computeMACD(closes),
-    atrPct: computeATR(highs, lows, closes),
-    volTrend: computeVolTrend(volumes),
-    priceVsEma50,
-    obv: computeOBV(closes, volumes),
-    volVsAvg: computeVolVsAvg(volumes),
-    stochastic: computeStochastic(highs, lows, closes),
-    ichimoku: computeIchimoku(highs, lows, closes),
-    williamsR: computeWilliamsR(highs, lows, closes),
-    cmf: computeCMF(highs, lows, closes, volumes),
-    tsi: computeTSI(closes),
-    adx: computeADX(highs, lows, closes),
-    psar: computePSAR(highs, lows, closes),
-    cci: computeCCI(highs, lows, closes),
-    keltner: computeKeltner(highs, lows, closes),
-    roc: computeROC(closes),
-    vwap: computeVWAP(highs, lows, closes, volumes),
-    forceIndex: computeForceIndex(closes, volumes),
-    adl: computeADL(highs, lows, closes, volumes),
-    chaikinOsc: computeChaikinOsc(highs, lows, closes, volumes),
-    stochRsi: computeStochRSI(closes),
-    trix: computeTRIX(closes),
-    kst: computeKST(closes),
-    elderRay: computeElderRay(highs, lows, closes),
-    fisher: computeFisher(highs, lows, closes),
-    massIndex: computeMassIndex(highs, lows),
-    rangePosWindow,
-  };
+export async function batchComputeAllIndicators(
+  batches: Record<string, Kline[]>
+): Promise<Record<string, TechnicalIndicators>> {
+  return new Promise((resolve, reject) => {
+    // Determine path to ml/indicators.py
+    const pyScript = path.resolve(process.cwd(), 'ml', 'indicators.py');
+    let pythonExec = process.env.RADAR__ML_PYTHON ?? 'python3';
+    if (!process.env.RADAR__ML_PYTHON) {
+      const venvPath = path.resolve(process.cwd(), '.venv-ml', 'bin', 'python');
+      if (fs.existsSync(venvPath)) {
+        pythonExec = venvPath;
+      }
+    }
+    const proc = spawn(pythonExec, [pyScript]);
+
+    let stdoutData = '';
+    let stderrData = '';
+
+    proc.stdout.on('data', (chunk) => {
+      stdoutData += chunk.toString();
+    });
+
+    proc.stderr.on('data', (chunk) => {
+      stderrData += chunk.toString();
+    });
+
+    proc.on('close', (code) => {
+      if (code !== 0) {
+        return reject(new Error(`Python process exited with code ${code}: ${stderrData}`));
+      }
+      try {
+        const results = JSON.parse(stdoutData);
+        resolve(results);
+      } catch (err) {
+        reject(new Error(`Failed to parse python output: ${err}\nOutput: ${stdoutData}`));
+      }
+    });
+
+    proc.on('error', (err) => reject(err));
+
+    // Convert klines to expected python shape
+    const payload: Record<string, Record<string, number>[]> = {};
+    for (const [key, klines] of Object.entries(batches)) {
+      payload[key] = klines.map(k => ({
+        open_time: k.openTime,
+        open: k.open,
+        high: k.high,
+        low: k.low,
+        close: k.close,
+        volume: k.volume,
+      }));
+    }
+
+    const inputData = JSON.stringify({ batches: payload });
+    proc.stdin.write(inputData);
+    proc.stdin.end();
+  });
+}
+
+export async function computeAllIndicators(klines: Kline[]): Promise<TechnicalIndicators> {
+  const result = await batchComputeAllIndicators({ SINGLE: klines });
+  return result['SINGLE']!;
 }
 
 /**
