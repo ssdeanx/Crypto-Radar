@@ -655,7 +655,7 @@ export function computeOBV(closes: number[], volumes: number[]): number | null {
 export function computeVolVsAvg(volumes: number[]): number | null {
   if (!volumes || volumes.length < 20) return null;
   const currentVolume = volumes[volumes.length - 1]!;
-  const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const avgVolume = volumes.slice(0, -1).reduce((a, b) => a + b, 0) / (volumes.length - 1);
   if (avgVolume === 0) return null;
   return (currentVolume / avgVolume) - 1;
 }

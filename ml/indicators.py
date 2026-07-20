@@ -250,30 +250,36 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
     def val(s):
         if s is None: return None
         v = s.iloc[-1]
-        return None if pd.isna(v) else float(v)
+        return None if pd.isna(v) or not np.isfinite(v) else float(v)
         
     out: dict = {
         'rsi': None,
         'mfi': None,
         'bb': None,
-        'macd': None,
+        'macd': { 'macd': None, 'histogram': None, 'signal': None },
         'atrPct': None,
-        'psar': None,
+        'volTrend': None,
+        'priceVsEma50': None,
+        'obv': None,
+        'volVsAvg': None,
+        'stochastic': { 'k': None, 'd': None },
+        'ichimoku': { 'conversionLine': None, 'baseLine': None, 'spanA': None, 'spanB': None, 'laggingSpan': None },
         'williamsR': None,
+        'cmf': None,
+        'tsi': None,
         'adx': None,
-        'trend': None,
-        'trendStrength': 0,
+        'psar': { 'sar': None, 'acceleration': 0.02, 'isReversal': False },
         'cci': None,
-        'keltner': None,
+        'keltner': { 'lower': None, 'middle': None, 'upper': None },
         'roc': None,
         'vwap': None,
         'forceIndex': None,
         'adl': None,
         'chaikinOsc': None,
-        'stochRsi': None,
+        'stochRsi': { 'k': None, 'd': None },
         'trix': None,
-        'kst': None,
-        'elderRay': None,
+        'kst': { 'kst': None, 'signal': None },
+        'elderRay': { 'bullPower': None, 'bearPower': None },
         'fisher': None,
         'massIndex': None,
         'rangePosWindow': 0.5
@@ -305,7 +311,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'width': val(bb.iloc[:, 3]),
             'position': val(bb.iloc[:, 4])
         }
-    else: out['bb'] = None
+    else:
+        out['bb'] = None
     
     # MACD
     macd = ta.macd(c, fast=12, slow=26, signal=9)
@@ -315,7 +322,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'histogram': val(macd.iloc[:, 1]),
             'signal': val(macd.iloc[:, 2])
         }
-    else: out['macd'] = None
+    else:
+        out['macd'] = { 'macd': None, 'histogram': None, 'signal': None }
     
     # ATR
     atr = ta.atr(h, l, c, length=14)
@@ -341,7 +349,7 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
     
     # Vol vs Avg
     if len(v) >= 20:
-        avg_vol = v.iloc[-20:].mean()
+        avg_vol = v.iloc[:-1].mean()
         cur_vol = val(v)
         out['volVsAvg'] = (cur_vol / avg_vol) - 1 if avg_vol > 0 and cur_vol is not None else None
     else: out['volVsAvg'] = None
@@ -353,7 +361,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'k': val(stoch.iloc[:, 0]),
             'd': val(stoch.iloc[:, 1])
         }
-    else: out['stochastic'] = None
+    else:
+        out['stochastic'] = { 'k': None, 'd': None }
     
     # Ichimoku
     ichi, _ = ta.ichimoku(h, l, c)
@@ -365,7 +374,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'spanB': val(ichi.iloc[:, 3]),
             'laggingSpan': val(ichi.iloc[:, 4])
         }
-    else: out['ichimoku'] = None
+    else:
+        out['ichimoku'] = { 'conversionLine': None, 'baseLine': None, 'spanA': None, 'spanB': None, 'laggingSpan': None }
     
     # Williams R
     willr = ta.willr(h, l, c, length=14)
@@ -399,7 +409,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'acceleration': af if af is not None else 0.02,
             'isReversal': rev
         }
-    else: out['psar'] = None
+    else:
+        out['psar'] = { 'sar': None, 'acceleration': 0.02, 'isReversal': False }
     
     # CCI
     cci = ta.cci(h, l, c, length=20)
@@ -413,7 +424,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'middle': val(kc.iloc[:, 1]),
             'upper': val(kc.iloc[:, 2])
         }
-    else: out['keltner'] = None
+    else:
+        out['keltner'] = { 'lower': None, 'middle': None, 'upper': None }
     
     # ROC
     roc = ta.roc(c, length=12)
@@ -442,7 +454,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'k': val(stochrsi.iloc[:, 0]),
             'd': val(stochrsi.iloc[:, 1])
         }
-    else: out['stochRsi'] = None
+    else:
+        out['stochRsi'] = { 'k': None, 'd': None }
     
     # TRIX
     trix = ta.trix(c, length=15)
@@ -455,7 +468,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'kst': val(kst.iloc[:, 0]),
             'signal': val(kst.iloc[:, 1])
         }
-    else: out['kst'] = None
+    else:
+        out['kst'] = { 'kst': None, 'signal': None }
     
     # Elder Ray
     eri = ta.eri(h, l, c, length=13)
@@ -464,7 +478,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
             'bullPower': val(eri.iloc[:, 0]),
             'bearPower': val(eri.iloc[:, 1])
         }
-    else: out['elderRay'] = None
+    else:
+        out['elderRay'] = { 'bullPower': None, 'bearPower': None }
     
     # Fisher
     fisher = ta.fisher(h, l, length=9)
@@ -498,7 +513,7 @@ if __name__ == '__main__':
             results = {}
             for key, rows in data["batches"].items():
                 if not rows:
-                    results[key] = {}
+                    results[key] = compute_latest_indicators(pd.DataFrame())
                     continue
                 df = pd.DataFrame(rows)
                 if 'open_time' in df.columns:
