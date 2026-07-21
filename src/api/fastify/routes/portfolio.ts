@@ -253,4 +253,168 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
       },
     });
   });
+
+  // ── POST /api/portfolio/chat ──
+  app.post('/chat', async (request, reply) => {
+    const chatSchema = z.object({
+      message: z.string().min(1),
+      profile: z.string().max(64).default('trader1'),
+    });
+
+    const parsed = chatSchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        detail: parsed.error.issues.map(i => i.message).join('; '),
+      });
+    }
+
+    const { message, profile } = parsed.data;
+
+    try {
+      const trades = await app.store.getPaperTrades(profile);
+      let totalPnl = 0;
+      let wins = 0;
+      let losses = 0;
+      const openPositions: Record<string, number> = {};
+
+      for (const t of trades) {
+        if (t.status === 'closed' && t.pnl != null) {
+          totalPnl += t.pnl;
+          if (t.pnl > 0) wins++;
+          else if (t.pnl < 0) losses++;
+        } else if (t.status === 'open') {
+          const qty = t.quantity ?? 0;
+          if (t.side === 'buy') {
+            openPositions[t.symbol] = (openPositions[t.symbol] || 0) + qty;
+          } else {
+            openPositions[t.symbol] = (openPositions[t.symbol] || 0) - qty;
+          }
+        }
+      }
+
+      for (const sym of Object.keys(openPositions)) {
+        const qty = openPositions[sym];
+        if (qty === undefined || qty <= 0) delete openPositions[sym];
+      }
+
+      const activeTokens = getTokenList().map(t => `${t.sym} (${t.name})`).join(', ');
+
+      const systemPrompt = `You are a professional AI Quant Trading Advisor for the Hermes Crypto Radar.
+The user is playing a paper trading game. You have access to their active portfolio state:
+- Profile: "${profile}"
+- Total Realised P&L: $${totalPnl.toFixed(2)}
+- Performance: ${wins} wins, ${losses} losses (Win Rate: ${((wins / (wins + losses || 1)) * 100).toFixed(1)}%)
+- Current Open Positions: ${JSON.stringify(openPositions)}
+- Supported tokens for trade: [${activeTokens}]
+
+Your role is to:
+1. Help the user analyze their trading history and active positions.
+2. Offer technical analysis insights when asked.
+3. Help them execute trades dynamically.
+
+To execute a buy or sell trade, output a special command block at the end of your response:
+[TRADE: { "action": "buy"|"sell", "symbol": "TICKER", "amount": number, "reason": "brief reason" }]
+For example: "[TRADE: { "action": "buy", "symbol": "BTC", "amount": 0.05, "reason": "RSI oversold" }]"
+
+Keep your response friendly, professional, and quantitative.`;
+
+      const baseURL = process.env.RADAR__AI_BASE_URL;
+      const aiEnv = process.env.RADAR__AI_ENV || (baseURL ? 'DEV' : 'PROD');
+      let responseText = '';
+
+      if (aiEnv === 'DEV') {
+        const { generateChat } = await import('../../../analysis/openai-compatible.js');
+        responseText = await generateChat([
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ]);
+      } else {
+        const { generateGeminiReasoning } = await import('../../../analysis/gemini.js');
+        const prompt = `${systemPrompt}\n\nUser Message: ${message}\n\nResponse:`;
+        responseText = await generateGeminiReasoning(prompt);
+      }
+
+      let executedTrade: Record<string, unknown> | null = null;
+      const tradeMatch = responseText.match(/\[TRADE:\s*(\{.*?\})\s*\]/s);
+      if (tradeMatch && tradeMatch[1]) {
+        try {
+          const tradeCmd = JSON.parse(tradeMatch[1]);
+          const symbol = String(tradeCmd.symbol).toUpperCase();
+          const side = String(tradeCmd.action).toLowerCase() as 'buy' | 'sell';
+          const amount = parseFloat(tradeCmd.amount);
+          const reason = tradeCmd.reason || 'AI Advisor automated trade';
+
+          if (['buy', 'sell'].includes(side) && amount > 0 && getTokenBySymbol(symbol)) {
+            const price = await getCurrentPrice(symbol);
+            if (price && price > 0) {
+              const now = new Date().toISOString();
+              const tradeId = `PT-${Date.now().toString(36).toUpperCase()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+
+              const tradeRow: PaperTradeRow = {
+                id: tradeId,
+                profile,
+                symbol,
+                side,
+                entry_price: price,
+                entry_time: now,
+                quantity: amount,
+                exit_price: null,
+                exit_time: null,
+                pnl: null,
+                fees: 0,
+                status: 'open',
+              };
+
+              if (side === 'sell') {
+                const openBuys = (await app.store.getPaperTrades(profile, 'open'))
+                  .filter(t => t.symbol === symbol && t.side === 'buy')
+                  .sort((a, b) => (a.entry_time ?? '').localeCompare(b.entry_time ?? ''));
+
+                let remaining = amount;
+                let totalPnl = 0;
+
+                for (const buy of openBuys) {
+                  if (remaining <= 0) break;
+                  const buyQty = buy.quantity ?? 0;
+                  const used = Math.min(buyQty, remaining);
+                  const buyPrice = buy.entry_price ?? 0;
+                  const pnl = (price - buyPrice) * used;
+                  totalPnl += pnl;
+                  remaining -= used;
+
+                  if (used >= buyQty) {
+                    await app.store.upsertPaperTrade({ ...buy, exit_price: price, exit_time: now, pnl: (buy.pnl ?? 0) + pnl, status: 'closed' });
+                  } else {
+                    await app.store.upsertPaperTrade({ ...buy, quantity: buyQty - used });
+                    await app.store.upsertPaperTrade({ ...tradeRow, id: tradeId + '-PARTIAL', quantity: used, exit_price: price, exit_time: now, pnl, status: 'closed' });
+                  }
+                }
+                tradeRow.pnl = totalPnl;
+                tradeRow.exit_price = price;
+                tradeRow.exit_time = now;
+                tradeRow.status = 'closed';
+              }
+
+              await app.store.upsertPaperTrade(tradeRow);
+              log.info('AI Advisor paper trade executed', { profile, symbol, side, amount, price, reason });
+              executedTrade = { id: tradeId, symbol, side, amount, price, total: amount * price };
+              responseText = responseText.replace(/\[TRADE:\s*(\{.*?\})\s*\]/s, `\n\n*(Executed Trade: ${side.toUpperCase()} ${amount} ${symbol} at $${price})*`);
+            }
+          }
+        } catch (e) {
+          log.warn('AI Advisor trade parse/execute failed', { error: String(e) });
+        }
+      }
+
+      return reply.send({
+        response: responseText,
+        executedTrade,
+      });
+    } catch (err) {
+      log.error('AI portfolio advisor failed', { error: String(err) });
+      return reply.status(500).send({ error: String(err) });
+    }
+  });
 };

@@ -404,39 +404,39 @@ Cloud Scheduler (0 * * * *)  ──POST /api/cron/scan──►  Cloud Run (stat
 ## Appendix: Execution Checklist
 
 ### Day 1 — Deploy-Blockers
-- [ ] Create `src/server.ts`
-- [ ] Overwrite `Dockerfile`
-- [ ] Overwrite `deploy.sh`
-- [ ] Add `isCloudMode()` to `src/core/config.ts`
-- [ ] Guard fs writes in `src/radar.ts`
-- [ ] Guard fs writes + WS in `src/daemon.ts`
-- [ ] Fix BQ field mapping in `src/store/db.ts`
+- [x] Create `src/server.ts`
+- [x] Overwrite `Dockerfile`
+- [x] Overwrite `deploy.sh`
+- [x] Add `isCloudMode()` to `src/core/config.ts`
+- [x] Guard fs writes in `src/radar.ts`
+- [x] Guard fs writes + WS in `src/daemon.ts`
+- [x] Fix BQ field mapping in `src/store/db.ts`
 - [ ] Deploy to Cloud Run
 - [ ] Verify `/health` returns 200
 - [ ] Verify `/api/cron/scan` with secret header
 
 ### Day 1-2 — Messaging
-- [ ] Install `@google-cloud/pubsub`
-- [ ] Add publish to `Store.persistRun()`
-- [ ] Create `infra/main.tf` with topic + queues
-- [ ] Create `src/core/queue.ts` (local fallback)
-- [ ] Create `src/handlers/gemini-analyze.ts`
-- [ ] Create `src/handlers/paper-trade.ts`
-- [ ] Create `src/handlers/model-retrain.ts`
+- [x] Install `@google-cloud/pubsub`
+- [x] Add publish to `Store.persistRun()`
+- [x] Create `infra/main.tf` with topic + queues
+- [x] Create `src/core/queue.ts` (local fallback)
+- [x] Create `src/handlers/gemini-analyze.ts` (implemented as Fastify /api/tasks/gemini-analyze)
+- [x] Create `src/handlers/paper-trade.ts` (implemented as Fastify /api/tasks/paper-trade)
+- [x] Create `src/handlers/model-retrain.ts` (implemented as Fastify /api/tasks/model-retrain)
 
 ### Day 2-3 — LLM
-- [ ] Create `src/core/llm-provider.ts`
-- [ ] Refactor `src/analysis/gemini.ts`
+- [x] Create `src/core/llm-provider.ts`
+- [x] Refactor `src/analysis/gemini.ts`
 - [ ] Create BQ Remote Model (one-time CLI)
 - [ ] Wire ML.GENERATE_TEXT into gemini handler
 
 ### Day 3-4 — Feedback Loop
-- [ ] Create `token_traces` table
-- [ ] Wire `persistRun()` to populate traces
-- [ ] Wire LLM output to prediction columns
-- [ ] Create 24h outcome backfill query
-- [ ] Create evaluation queries
-- [ ] Create A/B test SQL pattern
+- [x] Create `token_traces` table (in SQLite schema.ts DDL & migrations, mapped in BigQuery store schemas)
+- [x] Wire `persistRun()` to populate traces
+- [x] Wire LLM output to prediction columns (via gemini-analyze task handler)
+- [x] Create 24h outcome backfill query (implemented as Fastify /api/tasks/evaluate-outcomes)
+- [x] Create evaluation queries (created infra/evaluation-queries.sql)
+- [x] Create A/B test SQL pattern (created infra/evaluation-queries.sql)
 
 ---
 

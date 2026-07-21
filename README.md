@@ -13,7 +13,7 @@
   <img src="https://img.shields.io/badge/node-%3E%3D22-blue" alt="Node">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
   <img src="https://img.shields.io/badge/coverage-90%25-brightgreen" alt="Coverage">
-  <img src="https://img.shields.io/badge/tests-1222%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/tests-1242%20passed-brightgreen" alt="Tests">
 </p>
 
 <h1 align="center">🛰️ Crypto Radar</h1>
@@ -577,7 +577,7 @@ crypto-radar/
 
 ### Data Store, REST API & Real-Time Push
 
-Crypto Radar ships with a **BigQuery + SQLite dual store** (async refactored) that archives every scan and supports historical backfill. A **Fastify REST API** and **WebSocket push hub** are mounted into the daemon so external consumers can read live and historical data.
+Crypto Radar ships with a **BigQuery + SQLite dual store** (async refactored) that archives every scan and supports historical backfill. A **Fastify REST API** is mounted into the daemon so external consumers can read live and historical data.
 
 ```bash
 # Backfill all tracked tokens (klines + futures) into the store
@@ -596,7 +596,8 @@ crypto-radar collect --orderbook --fear-greed --cross-asset
 - `src/collector.ts` — `runCollector()` walks Binance `klines` backward to backfill, then incrementally updates from the last stored candle. Also pulls Binance Futures funding/OI/long-short/liquidations.
 - `src/sources/` — `futures`, `fear-greed` (alternative.me), `orderbook`, `cross-asset` (CoinGecko global).
 - `src/api/fastify/` — Fastify-only REST routing under `/api/*` (tickers, klines, signals, news, portfolio, futures, fear-greed, cross-asset, orderbook, stats, predictions, auth, ML endpoints, cron scan). Legacy `src/api/rest.ts` has been removed — Fastify is the sole API provider.
-- `src/api/ws.ts` — WebSocket hub (`ws`) broadcasting `prices` / `signals` / `news` / `portfolio` channels on scan-complete.
+- `src/api/fastify/routes/tasks.ts` — Asynchronous GCP Cloud Tasks queue processing router `/api/tasks/*` for stateless container scaling (secured via pre-shared secret). Includes a Socratic AI Quant Advisor chat route `/api/portfolio/chat` that executes trades on command.
+- **GCS Synchronization** — Startup and retraining hook points sync SQLite database files, CatBoost ML model binaries (`.joblib`), and normalization scaler parameters (`.json`) automatically between GCS buckets and ephemeral container disk.
 
 ### ML Pipeline (v2.3.0+)
 

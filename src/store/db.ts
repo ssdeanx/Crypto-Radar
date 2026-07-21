@@ -1,12 +1,13 @@
 import { DatabaseSync } from "node:sqlite";
 import type { StatementSync, SQLInputValue } from "node:sqlite";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { BigQuery } from "@google-cloud/bigquery";
 import { SCHEMA_DDL } from "./schema.js";
 import { DataError } from "../core/errors.js";
 import { logger } from "../core/logger.js";
+import { isCloudMode } from "../core/config.js";
 import { getGlobalCache } from "../core/cache.js";
 import type {
   KlineRow,
@@ -24,7 +25,7 @@ import type {
   CrossAssetRow,
   PredictionRow,
 } from "../types.js";
-import type { EnrichedTicker, NewsMatch, TokenSignal } from "../types.js";
+import type { EnrichedTicker, NewsMatch, TokenSignal, TokenTraceRow, TaskPayload } from "../types.js";
 
 const log = logger.child({ module: "store" });
 
@@ -160,6 +161,8 @@ const BQ_SCHEMAS: Record<string, BQSchemaField[]> = {
     { name: "ml_score", type: "FLOAT" },
     { name: "features_hash", type: "STRING" },
     { name: "reasoning", type: "STRING" },
+    { name: "outcome", type: "FLOAT" },
+    { name: "outcome_classification", type: "STRING" },
   ],
   drift_events: [
     { name: "id", type: "STRING", mode: "REQUIRED" },
@@ -180,6 +183,45 @@ const BQ_SCHEMAS: Record<string, BQSchemaField[]> = {
     { name: "created_at", type: "STRING" },
     { name: "updated_at", type: "STRING" },
   ],
+  token_traces: [
+    { name: "trace_id", type: "STRING", mode: "REQUIRED" },
+    { name: "run_id", type: "STRING", mode: "REQUIRED" },
+    { name: "symbol", type: "STRING", mode: "REQUIRED" },
+    { name: "token_id", type: "STRING", mode: "REQUIRED" },
+    { name: "observed_at", type: "STRING", mode: "REQUIRED" },
+    { name: "outcome_at", type: "STRING" },
+    { name: "last_price", type: "FLOAT" },
+    { name: "price_change_pct", type: "FLOAT" },
+    { name: "volume", type: "FLOAT" },
+    { name: "spread_pct", type: "FLOAT" },
+    { name: "market_cap", type: "FLOAT" },
+    { name: "composite_score", type: "FLOAT" },
+    { name: "direction", type: "STRING" },
+    { name: "regime", type: "STRING" },
+    { name: "rsi", type: "FLOAT" },
+    { name: "macd_histogram", type: "FLOAT" },
+    { name: "bb_width", type: "FLOAT" },
+    { name: "atr_pct", type: "FLOAT" },
+    { name: "adx", type: "FLOAT" },
+    { name: "analysis_text", type: "STRING" },
+    { name: "prediction_direction", type: "STRING" },
+    { name: "prediction_confidence", type: "FLOAT" },
+    { name: "gemini_raw", type: "STRING" },
+    { name: "needs_analysis", type: "INTEGER" },
+    { name: "analyzed_at", type: "STRING" },
+    { name: "outcome_price", type: "FLOAT" },
+    { name: "outcome_change_pct", type: "FLOAT" },
+    { name: "outcome_high", type: "FLOAT" },
+    { name: "outcome_low", type: "FLOAT" },
+    { name: "outcome_volume", type: "FLOAT" },
+    { name: "outcome_is_rugpull", type: "INTEGER" },
+    { name: "outcome_pnl_pct", type: "FLOAT" },
+    { name: "outcome_classification", type: "STRING" },
+    { name: "outcome_evaluated", type: "INTEGER" },
+    { name: "outcome_evaluated_at", type: "STRING" },
+    { name: "created_at", type: "STRING", mode: "REQUIRED" },
+    { name: "updated_at", type: "STRING", mode: "REQUIRED" },
+  ],
   schema_meta: [
     { name: "key", type: "STRING", mode: "REQUIRED" },
     { name: "value", type: "STRING" },
@@ -188,6 +230,7 @@ const BQ_SCHEMAS: Record<string, BQSchemaField[]> = {
 
 export class Store {
   private db: DatabaseSync | null = null;
+  private dbPath: string = "";
   private stmts = new Map<string, Stmt>();
   private bq: BigQuery | null = null;
   private projectId: string = "";
@@ -204,6 +247,7 @@ export class Store {
       this.bq = new BigQuery({ projectId: this.projectId });
     } else {
       const dbPath = resolve(opts.path);
+      this.dbPath = dbPath;
       log.info(`Initializing SQLite store at=${dbPath}`);
       if (!existsSync(dbPath) && opts.createIfMissing === false) {
         throw new DataError("store", `Database not found at ${dbPath}`);
@@ -214,6 +258,123 @@ export class Store {
       this.db.exec("PRAGMA journal_mode = WAL");
       this.db.exec("PRAGMA foreign_keys = ON");
       this.db.exec("PRAGMA busy_timeout = 5000");
+    }
+  }
+
+  async syncFromBucket(): Promise<void> {
+    const bucketName = process.env['RADAR__STORAGE_BUCKET'];
+    if (!bucketName || !this.dbPath) return;
+    try {
+      const { Storage } = await import('@google-cloud/storage');
+      const storage = new Storage();
+      const bucket = storage.bucket(bucketName);
+      const file = bucket.file('crypto-radar.db');
+      const [exists] = await file.exists();
+      if (exists) {
+        log.info(`Downloading SQLite database from GCS bucket ${bucketName}...`);
+        if (this.db) {
+          this.stmts.clear();
+          this.db = null;
+        }
+        await file.download({ destination: this.dbPath });
+        log.info(`Successfully downloaded database to ${this.dbPath}`);
+        this.db = new DatabaseSync(this.dbPath);
+        this.db.exec("PRAGMA journal_mode = WAL");
+        this.db.exec("PRAGMA foreign_keys = ON");
+        this.db.exec("PRAGMA busy_timeout = 5000");
+      }
+    } catch (err) {
+      log.error('Failed to sync database from GCS bucket', { error: String(err) });
+    }
+  }
+
+  async syncToBucket(): Promise<void> {
+    const bucketName = process.env['RADAR__STORAGE_BUCKET'];
+    if (!bucketName || !this.dbPath) return;
+    try {
+      const { Storage } = await import('@google-cloud/storage');
+      const storage = new Storage();
+      const bucket = storage.bucket(bucketName);
+      log.info(`Uploading SQLite database to GCS bucket ${bucketName}...`);
+      await bucket.upload(this.dbPath, {
+        destination: 'crypto-radar.db',
+        metadata: {
+          cacheControl: 'no-cache',
+        },
+      });
+      log.info('Successfully uploaded database to GCS bucket');
+    } catch (err) {
+      log.error('Failed to sync database to GCS bucket', { error: String(err) });
+    }
+  }
+
+  async syncModelsFromBucket(): Promise<void> {
+    const bucketName = process.env['RADAR__STORAGE_BUCKET'];
+    if (!bucketName) return;
+    try {
+      const { Storage } = await import('@google-cloud/storage');
+      const storage = new Storage();
+      const bucket = storage.bucket(bucketName);
+      
+      const [files] = await bucket.getFiles({ prefix: 'ml/' });
+      log.info(`Syncing ${files.length} ML files from GCS bucket ${bucketName}...`);
+      
+      const dataDir = dirname(this.dbPath || 'data');
+      for (const file of files) {
+        const destPath = resolve(dataDir, file.name);
+        const destDir = dirname(destPath);
+        if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
+        
+        log.info(`Downloading GCS file ${file.name} to ${destPath}...`);
+        await file.download({ destination: destPath });
+      }
+      log.info('Successfully synced ML files from GCS');
+    } catch (err) {
+      log.error('Failed to sync ML files from GCS bucket', { error: String(err) });
+    }
+  }
+
+  async syncModelsToBucket(): Promise<void> {
+    const bucketName = process.env['RADAR__STORAGE_BUCKET'];
+    if (!bucketName) return;
+    try {
+      const { Storage } = await import('@google-cloud/storage');
+      const storage = new Storage();
+      const bucket = storage.bucket(bucketName);
+      
+      const dataDir = dirname(this.dbPath || 'data');
+      const mlDir = resolve(dataDir, 'ml');
+      
+      if (!existsSync(mlDir)) return;
+      
+      const walk = (dir: string): string[] => {
+        let results: string[] = [];
+        const list = readdirSync(dir);
+        for (const file of list) {
+          const path = resolve(dir, file);
+          const stat = statSync(path);
+          if (stat && stat.isDirectory()) {
+            results = results.concat(walk(path));
+          } else {
+            results.push(path);
+          }
+        }
+        return results;
+      };
+      
+      const files = walk(mlDir);
+      log.info(`Syncing ${files.length} ML files to GCS bucket ${bucketName}...`);
+      
+      for (const file of files) {
+        const relativePath = file.substring(dataDir.length + 1);
+        log.info(`Uploading local file ${relativePath} to GCS...`);
+        await bucket.upload(file, {
+          destination: relativePath,
+        });
+      }
+      log.info('Successfully synced ML files to GCS');
+    } catch (err) {
+      log.error('Failed to sync ML files to GCS bucket', { error: String(err) });
     }
   }
 
@@ -239,11 +400,14 @@ export class Store {
         }
       }
     } else if (this.db) {
-      this.db.exec(SCHEMA_DDL);
-      const row = this.db.prepare("SELECT value FROM schema_meta WHERE key = 'version'").get() as { value: string } | undefined;
-      const currentVersion = row ? parseInt(row.value, 10) : 0;
-      if (currentVersion < 3) {
-        this.db.prepare("INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', '3')").run();
+      if (isCloudMode()) {
+        await this.syncFromBucket();
+      }
+      log.debug("Using schema to migrate database", { ddlLength: SCHEMA_DDL.length });
+      const { migrate: schemaMigrate } = await import('./schema.js');
+      schemaMigrate(this.db);
+      if (isCloudMode()) {
+        await this.syncToBucket();
       }
     }
   }
@@ -455,6 +619,42 @@ export class Store {
           },
         }));
         await table.insert(bqRows, { ignoreUnknownValues: true });
+
+        // ── Populate token_traces in BigQuery ──
+        const tracesTable = dataset.table("token_traces");
+        const bqTraces = result.tickers.map(t => {
+          const matchingSignal = result.signals.find(s => s.symbol === t.symbol);
+          const traceId = sha1(`${t.symbol}-${t.tsUtc}-trace`);
+          return {
+            insertId: traceId,
+            json: {
+              trace_id: traceId,
+              run_id: t.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`,
+              symbol: t.symbol,
+              token_id: t.tokenId,
+              observed_at: t.tsUtc,
+              last_price: t.lastPrice,
+              price_change_pct: t.priceChangePercent,
+              volume: t.volume,
+              spread_pct: t.spreadPct ?? null,
+              market_cap: null,
+              composite_score: t.compositeScore ?? null,
+              direction: matchingSignal?.alerts?.[0] ?? null,
+              regime: t.regime ?? null,
+              rsi: t.rsi ?? null,
+              macd_histogram: t.macdHistogram ?? null,
+              bb_width: t.bbWidth ?? null,
+              atr_pct: t.atrPct ?? null,
+              adx: t.adx ?? null,
+              needs_analysis: 1,
+              outcome_evaluated: 0,
+              outcome_is_rugpull: 0,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }
+          };
+        });
+        await tracesTable.insert(bqTraces, { ignoreUnknownValues: true });
       }
 
       if (result.signals.length > 0) {
@@ -496,6 +696,35 @@ export class Store {
         });
         await table.insert(bqRows, { ignoreUnknownValues: true });
       }
+
+      // ── Publish scan.complete event via Pub/Sub ──
+      if (isCloudMode()) {
+        try {
+          const { PubSub } = await import('@google-cloud/pubsub');
+          const pubsub = new PubSub();
+          const topicName = process.env['RADAR__PUBSUB_TOPIC'] || 'crypto-radar-events';
+          const topic = pubsub.topic(topicName);
+
+          const runId = result.tickers[0]?.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`;
+          const tsUtc = result.tickers[0]?.tsUtc || new Date().toISOString();
+
+          const messageData = {
+            type: "scan.complete",
+            runId,
+            tsUtc,
+            tokenCount: result.tickers.length,
+            tickerSymbols: result.tickers.map(t => t.symbol),
+            tickerIds: result.tickers.map(t => t.tokenId),
+            signalCount: result.signals.length
+          };
+
+          const dataBuffer = Buffer.from(JSON.stringify(messageData));
+          await topic.publishMessage({ data: dataBuffer });
+          log.info('Published scan.complete event to Pub/Sub', { runId, topic: topicName });
+        } catch (pubsubErr) {
+          log.warn('Failed to publish scan.complete event to Pub/Sub', { error: String(pubsubErr) });
+        }
+      }
     } else if (this.db) {
       const tickerSnapshot = this.prep(`INSERT OR REPLACE INTO tickers
         (symbol, ts_utc, price, price_change_pct, volume, quote_volume,
@@ -506,6 +735,38 @@ export class Store {
          rsi, macd_hist, bb_width, atr_pct, adx, regime, composite_score)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const t of result.tickers) {
+        const matchingSignal = result.signals.find(s => s.symbol === t.symbol);
+        const traceId = sha1(`${t.symbol}-${t.tsUtc}-trace`);
+        
+        // Populate token_traces in SQLite
+        this.prep(
+          `INSERT OR REPLACE INTO token_traces
+          (trace_id, run_id, symbol, token_id, observed_at, last_price, price_change_pct, volume, spread_pct, market_cap,
+           rsi, macd_histogram, bb_width, atr_pct, adx, regime, composite_score, direction, needs_analysis, outcome_evaluated, outcome_is_rugpull, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?)`
+        ).run(
+          traceId,
+          t.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`,
+          t.symbol,
+          t.tokenId,
+          t.tsUtc,
+          t.lastPrice,
+          t.priceChangePercent,
+          t.volume,
+          t.spreadPct ?? null,
+          null,
+          t.rsi ?? null,
+          t.macdHistogram ?? null,
+          t.bbWidth ?? null,
+          t.atrPct ?? null,
+          t.adx ?? null,
+          t.regime ?? null,
+          t.compositeScore ?? null,
+          matchingSignal?.alerts?.[0] ?? null,
+          new Date().toISOString(),
+          new Date().toISOString()
+        );
+
         const params: SQLInputValue[] = [
           t.symbol,
           t.tsUtc,
@@ -562,6 +823,23 @@ export class Store {
           n.relevance,
           n.tsUtc,
         );
+      }
+
+      // Local fallback queue trigger for development
+      if (!isCloudMode()) {
+        const runId = result.tickers[0]?.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`;
+        const tsUtc = result.tickers[0]?.tsUtc || new Date().toISOString();
+        const payload: TaskPayload = {
+          runId,
+          tsUtc,
+          tickers: result.tickers.map(t => ({ symbol: t.symbol, tokenId: t.tokenId })),
+          signals: result.signals.map(s => ({ symbol: s.symbol, compositeScore: s.compositeScore }))
+        };
+
+        import('../core/queue.js').then(({ enqueueTask }) => {
+          enqueueTask('crypto-radar-gemini-analysis', payload).catch(() => {});
+          enqueueTask('crypto-radar-paper-trade', payload).catch(() => {});
+        }).catch(() => {});
       }
     }
   }
@@ -1275,7 +1553,7 @@ export class Store {
 
   // ── Predictions ──
 
-  async upsertPrediction(row: PredictionRow & { reasoning?: string }): Promise<void> {
+  async upsertPrediction(row: PredictionRow & { reasoning?: string; outcome?: number; outcome_classification?: string }): Promise<void> {
     if (this.bq) {
       const dataset = this.bq.dataset(this.datasetId);
       await dataset.table("predictions").insert([{
@@ -1291,13 +1569,15 @@ export class Store {
           ml_score: row.ml_score ?? null,
           features_hash: row.features_hash ?? null,
           reasoning: row.reasoning ?? null,
+          outcome: row.outcome ?? null,
+          outcome_classification: row.outcome_classification ?? null,
         },
       }], { ignoreUnknownValues: true });
     } else if (this.db) {
       this.prep(
         `INSERT OR REPLACE INTO predictions
-        (id, symbol, ts, direction, confidence, model_id, horizon, ml_score, features_hash)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, symbol, ts, direction, confidence, model_id, horizon, ml_score, features_hash, reasoning, outcome, outcome_classification)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       ).run(
         row.id,
         row.symbol,
@@ -1308,8 +1588,179 @@ export class Store {
         row.horizon,
         row.ml_score ?? null,
         row.features_hash ?? null,
+        row.reasoning ?? null,
+        row.outcome ?? null,
+        row.outcome_classification ?? null,
+      );
+      if (isCloudMode()) {
+        await this.syncToBucket();
+      }
+    }
+  }
+
+  async persistTrace(row: TokenTraceRow): Promise<void> {
+    if (this.bq) {
+      const dataset = this.bq.dataset(this.datasetId);
+      await dataset.table("token_traces").insert([{
+        insertId: row.trace_id,
+        json: {
+          trace_id: row.trace_id,
+          run_id: row.run_id,
+          symbol: row.symbol,
+          token_id: row.token_id,
+          observed_at: row.observed_at,
+          outcome_at: row.outcome_at ?? null,
+          last_price: row.last_price ?? null,
+          price_change_pct: row.price_change_pct ?? null,
+          volume: row.volume ?? null,
+          spread_pct: row.spread_pct ?? null,
+          market_cap: row.market_cap ?? null,
+          composite_score: row.composite_score ?? null,
+          direction: row.direction ?? null,
+          regime: row.regime ?? null,
+          rsi: row.rsi ?? null,
+          macd_histogram: row.macd_histogram ?? null,
+          bb_width: row.bb_width ?? null,
+          atr_pct: row.atr_pct ?? null,
+          adx: row.adx ?? null,
+          analysis_text: row.analysis_text ?? null,
+          prediction_direction: row.prediction_direction ?? null,
+          prediction_confidence: row.prediction_confidence ?? null,
+          gemini_raw: row.gemini_raw ?? null,
+          needs_analysis: row.needs_analysis ?? 1,
+          analyzed_at: row.analyzed_at ?? null,
+          outcome_price: row.outcome_price ?? null,
+          outcome_change_pct: row.outcome_change_pct ?? null,
+          outcome_high: row.outcome_high ?? null,
+          outcome_low: row.outcome_low ?? null,
+          outcome_volume: row.outcome_volume ?? null,
+          outcome_is_rugpull: row.outcome_is_rugpull ?? 0,
+          outcome_pnl_pct: row.outcome_pnl_pct ?? null,
+          outcome_classification: row.outcome_classification ?? null,
+          outcome_evaluated: row.outcome_evaluated ?? 0,
+          outcome_evaluated_at: row.outcome_evaluated_at ?? null,
+          created_at: row.created_at || new Date().toISOString(),
+          updated_at: row.updated_at || new Date().toISOString(),
+        },
+      }], { ignoreUnknownValues: true });
+    } else if (this.db) {
+      this.prep(
+        `INSERT OR REPLACE INTO token_traces
+        (trace_id, run_id, symbol, token_id, observed_at, outcome_at, last_price, price_change_pct, volume, spread_pct,
+         market_cap, composite_score, direction, regime, rsi, macd_histogram, bb_width, atr_pct, adx,
+         analysis_text, prediction_direction, prediction_confidence, gemini_raw, needs_analysis, analyzed_at,
+         outcome_price, outcome_change_pct, outcome_high, outcome_low, outcome_volume, outcome_is_rugpull,
+         outcome_pnl_pct, outcome_classification, outcome_evaluated, outcome_evaluated_at, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).run(
+        row.trace_id,
+        row.run_id,
+        row.symbol,
+        row.token_id ?? null,
+        row.observed_at,
+        row.outcome_at ?? null,
+        row.last_price ?? null,
+        row.price_change_pct ?? null,
+        row.volume ?? null,
+        row.spread_pct ?? null,
+        row.market_cap ?? null,
+        row.composite_score ?? null,
+        row.direction ?? null,
+        row.regime ?? null,
+        row.rsi ?? null,
+        row.macd_histogram ?? null,
+        row.bb_width ?? null,
+        row.atr_pct ?? null,
+        row.adx ?? null,
+        row.analysis_text ?? null,
+        row.prediction_direction ?? null,
+        row.prediction_confidence ?? null,
+        row.gemini_raw ?? null,
+        row.needs_analysis ?? 1,
+        row.analyzed_at ?? null,
+        row.outcome_price ?? null,
+        row.outcome_change_pct ?? null,
+        row.outcome_high ?? null,
+        row.outcome_low ?? null,
+        row.outcome_volume ?? null,
+        row.outcome_is_rugpull ?? 0,
+        row.outcome_pnl_pct ?? null,
+        row.outcome_classification ?? null,
+        row.outcome_evaluated ?? 0,
+        row.outcome_evaluated_at ?? null,
+        row.created_at || new Date().toISOString(),
+        row.updated_at || new Date().toISOString()
+      );
+      if (isCloudMode()) {
+        await this.syncToBucket();
+      }
+    }
+  }
+
+  async updateTrace(traceId: string, updates: Record<string, unknown>): Promise<void> {
+    const keys = Object.keys(updates);
+    if (keys.length === 0) return;
+    
+    updates.updated_at = new Date().toISOString();
+    const updatedKeys = Object.keys(updates);
+
+    if (this.bq) {
+      const setClause = updatedKeys.map(k => `${k} = @${k}`).join(", ");
+      const query = `UPDATE ${this.getTable("token_traces")} SET ${setClause} WHERE trace_id = @traceId`;
+      await this.bq.query({
+        query,
+        params: { ...updates, traceId },
+      });
+    } else if (this.db) {
+      const setClause = updatedKeys.map(k => `${k} = ?`).join(", ");
+      const query = `UPDATE token_traces SET ${setClause} WHERE trace_id = ?`;
+      const params = updatedKeys.map(k => updates[k] as SQLInputValue);
+      params.push(traceId);
+      this.prep(query).run(...params);
+      if (isCloudMode()) {
+        await this.syncToBucket();
+      }
+    }
+  }
+
+  // ── Token Trace Queries ──
+
+  /**
+   * Fetch token_traces rows where needs_analysis = 1 (pending LLM analysis).
+   * Used by the /api/tasks/gemini-analyze task handler.
+   */
+  async getTracesNeedingAnalysis(limit = 50): Promise<TokenTraceRow[]> {
+    if (this.bq) {
+      const sql = `SELECT * FROM ${this.getTable("token_traces")} WHERE needs_analysis = 1 ORDER BY observed_at ASC LIMIT @limit`;
+      const [rows] = await this.bq.query({ query: sql, params: { limit } });
+      return rows as TokenTraceRow[];
+    } else if (this.db) {
+      return this.queryAll<TokenTraceRow>(
+        `SELECT * FROM token_traces WHERE needs_analysis = 1 ORDER BY observed_at ASC LIMIT ?`,
+        [limit],
       );
     }
+    return [];
+  }
+
+  /**
+   * Fetch token_traces where outcome_evaluated = 0 and the 24h window has passed.
+   * Used by the /api/tasks/evaluate-outcomes task handler.
+   */
+  async getTracesNeedingOutcome(limit = 100): Promise<TokenTraceRow[]> {
+    const cutoffMs = Date.now() - 24 * 60 * 60 * 1000; // 24h ago
+    const cutoffIso = new Date(cutoffMs).toISOString();
+    if (this.bq) {
+      const sql = `SELECT * FROM ${this.getTable("token_traces")} WHERE outcome_evaluated = 0 AND observed_at < @cutoff ORDER BY observed_at ASC LIMIT @limit`;
+      const [rows] = await this.bq.query({ query: sql, params: { cutoff: cutoffIso, limit } });
+      return rows as TokenTraceRow[];
+    } else if (this.db) {
+      return this.queryAll<TokenTraceRow>(
+        `SELECT * FROM token_traces WHERE outcome_evaluated = 0 AND observed_at < ? ORDER BY observed_at ASC LIMIT ?`,
+        [cutoffIso, limit],
+      );
+    }
+    return [];
   }
 
   async getPredictions(filter?: {

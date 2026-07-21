@@ -35,7 +35,12 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
-from catboost import CatBoostClassifier, Pool
+from catboost import CatBoostClassifier
+
+# Local module imports
+from indicators import _add_ta_features, _derive_cadence, _feature_correlation_filter
+from manifest import update_manifest
+from model import build_catboost, num_leaves_to_depth
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -43,11 +48,6 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
 )
-
-# Local module imports
-from indicators import _add_ta_features, _feature_correlation_filter, _derive_cadence
-from manifest import update_manifest
-from model import build_catboost, check_gpu, resolve_class_weight, num_leaves_to_depth
 
 logger = logging.getLogger(__name__)
 
@@ -623,15 +623,15 @@ def _run_optuna(args, X_train, y_train, prediction_times_series) -> dict:
             "depth": trial.suggest_int("depth", 4, 10),
             "l2_leaf_reg": trial.suggest_int("l2_leaf_reg", 1, 10),
         }
-        
+
         scores = []
         for train_idx, val_idx in splitter.split(X_train):
             X_tr, y_tr = X_train[train_idx], y_train[train_idx]
             X_te, y_te = X_train[val_idx], y_train[val_idx]
-            
+
             if len(np.unique(y_tr)) < 2 or len(X_te) == 0:
                 continue
-                
+
             model = CatBoostClassifier(
                 iterations=100,  # smaller for speed during search
                 learning_rate=params["learning_rate"],
@@ -645,7 +645,7 @@ def _run_optuna(args, X_train, y_train, prediction_times_series) -> dict:
             model.fit(X_tr, y_tr, eval_set=(X_te, y_te), verbose=False)
             pred = model.predict(X_te)
             scores.append(float(f1_score(y_te, pred, average="weighted")))
-            
+
         return float(np.mean(scores)) if scores else 0.0
 
     study.optimize(objective, n_trials=args.optuna_trials)

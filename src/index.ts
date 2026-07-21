@@ -120,8 +120,8 @@ export { fetchFearGreed } from './sources/fear-greed.js';
 export { snapshotOrderBook } from './sources/orderbook.js';
 export { fetchGlobalData } from './sources/cross-asset.js';
 
-// REST API + WS hub
-export { createWsHub } from './api/ws.js';
+// REST API
+
 
 // ML Pipeline
 export { buildFeatures } from './ml/features.js';

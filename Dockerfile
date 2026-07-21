@@ -1,20 +1,15 @@
-FROM node:22-bookworm-slim AS build
+FROM node:22-alpine AS build
 WORKDIR /app
 COPY package*.json tsconfig.json ./
 RUN npm ci
 COPY src/ ./src/
 RUN npm run build
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:22-alpine AS runtime
 WORKDIR /app
 
-# Install dependencies, git, curl, and python build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
-    git \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+# Install python3, build-base, git, curl, and bash
+RUN apk add --no-cache python3 py3-pip git curl bash build-base
 
 # Install uv using the official installer
 ADD https://astral.sh/uv/install.sh /uv-bootstrap.sh
@@ -30,12 +25,13 @@ COPY plugin.yaml ./
 COPY ml/ ./ml/
 
 # Create virtualenv and install dependencies
-ENV RADAR__ML_PYTHON="/app/.venv-ml/bin/python3"
-RUN uv venv --python 3.14 /app/.venv-ml && \
+ENV RADAR__ML_PYTHON="/app/.venv-ml/bin/python"
+RUN uv venv --python 3.12 /app/.venv-ml && \
     uv pip install --requirement ml/requirements.txt --python /app/.venv-ml
 
-EXPOSE 9877
+EXPOSE 8080
 
-ENV RADAR__DAEMON_PORT=9877
+ENV PORT=8080
+ENV RADAR__DAEMON_PORT=8080
 
-CMD ["node", "dist/cli.js", "daemon"]
+CMD ["node", "dist/server.js"]

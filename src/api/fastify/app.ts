@@ -32,6 +32,7 @@ import { mlRoutes } from './routes/ml.js';
 import { portfolioRoutes } from './routes/portfolio.js';
 import { restRoutes } from './routes/rest.js';
 import { cronRoutes } from './routes/cron.js';
+import { taskRoutes } from './routes/tasks.js';
 import { logger } from '../../core/logger.js';
 
 const log = logger.child({ module: 'fastify-app' });
@@ -199,6 +200,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   await app.register(portfolioRoutes, { prefix: '/api/portfolio' }); // Portfolio routes (trade, history)
   await app.register(mlRoutes);                                      // ML pipeline routes
   await app.register(cronRoutes);                                    // Secure automated cron routes
+  await app.register(taskRoutes);                                    // Cloud Task handler routes
 
   // ── Enterprise: 404 handler ──
   app.setNotFoundHandler((_request, reply) => {

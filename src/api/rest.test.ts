@@ -15,6 +15,7 @@ vi.mock('../core/config.js', () => ({
     apiToken: 'test-token-123',
     dataDir: '/tmp',
   })),
+  isCloudMode: vi.fn(() => false),
 }));
 
 import { Store } from '../store/db.js';

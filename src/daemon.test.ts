@@ -154,4 +154,17 @@ describe('HTTP server', () => {
   it('writes PID file on start', () => {
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(expect.stringContaining('daemon.pid'), expect.any(String));
   });
+
+  it('skips PID file write in cloud mode', async () => {
+    mockFs.writeFileSync.mockClear();
+    process.env['K_SERVICE'] = 'crypto-radar';
+    const { runDaemon } = await import('./daemon.js');
+    
+    // Call runDaemon which triggers writePid
+    await runDaemon();
+    
+    expect(mockFs.writeFileSync).not.toHaveBeenCalledWith(expect.stringContaining('daemon.pid'), expect.any(String));
+    
+    delete process.env['K_SERVICE'];
+  });
 });

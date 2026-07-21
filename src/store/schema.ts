@@ -1,6 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_DDL = `
 PRAGMA journal_mode = WAL;
@@ -119,8 +119,53 @@ CREATE TABLE IF NOT EXISTS predictions (
   model_id    TEXT NOT NULL,
   horizon     INTEGER NOT NULL,
   ml_score    REAL,
-  features_hash TEXT
+  features_hash TEXT,
+  reasoning   TEXT,
+  outcome     REAL,
+  outcome_classification TEXT
 );
+
+-- Token Traces table for tracing LLM predictions and outcome loop
+CREATE TABLE IF NOT EXISTS token_traces (
+  trace_id                 TEXT PRIMARY KEY,
+  run_id                   TEXT NOT NULL,
+  symbol                   TEXT NOT NULL,
+  token_id                 TEXT NOT NULL,
+  observed_at              TEXT NOT NULL,
+  outcome_at               TEXT,
+  last_price               REAL,
+  price_change_pct         REAL,
+  volume                   REAL,
+  spread_pct               REAL,
+  market_cap               REAL,
+  composite_score          REAL,
+  direction                TEXT,
+  regime                   TEXT,
+  rsi                      REAL,
+  macd_histogram           REAL,
+  bb_width                 REAL,
+  atr_pct                  REAL,
+  adx                      REAL,
+  analysis_text            TEXT,
+  prediction_direction     TEXT,
+  prediction_confidence    REAL,
+  gemini_raw               TEXT,
+  needs_analysis           INTEGER DEFAULT 1,
+  analyzed_at              TEXT,
+  outcome_price            REAL,
+  outcome_change_pct       REAL,
+  outcome_high             REAL,
+  outcome_low              REAL,
+  outcome_volume           REAL,
+  outcome_is_rugpull       INTEGER DEFAULT 0,
+  outcome_pnl_pct          REAL,
+  outcome_classification   TEXT,
+  outcome_evaluated        INTEGER DEFAULT 0,
+  outcome_evaluated_at     TEXT,
+  created_at               TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at               TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 
 -- F5: Drift events table (concept drift detection)
 CREATE TABLE IF NOT EXISTS drift_events (
@@ -150,6 +195,8 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE INDEX IF NOT EXISTS idx_ticker_history_ts ON ticker_history(ts_utc);
 CREATE INDEX IF NOT EXISTS idx_signal_history_ts ON signal_history(ts_utc);
 CREATE INDEX IF NOT EXISTS idx_predictions_ts ON predictions(ts);
+CREATE INDEX IF NOT EXISTS idx_token_traces_observed_at ON token_traces(observed_at);
+CREATE INDEX IF NOT EXISTS idx_token_traces_needs_analysis ON token_traces(needs_analysis);
 `;
 
 export function migrate(db: DatabaseSync): void {
@@ -184,6 +231,19 @@ export function migrate(db: DatabaseSync): void {
       // Non-fatal: migration best-effort
       db.prepare("INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('version', ?)").run(String(SCHEMA_VERSION));
     }
+  }
+
+  if (currentVersion < 4) {
+    try {
+      db.exec("ALTER TABLE predictions ADD COLUMN reasoning TEXT;");
+    } catch { /* ignore if column already exists */ }
+    try {
+      db.exec("ALTER TABLE predictions ADD COLUMN outcome REAL;");
+    } catch { /* ignore if column already exists */ }
+    try {
+      db.exec("ALTER TABLE predictions ADD COLUMN outcome_classification TEXT;");
+    } catch { /* ignore if column already exists */ }
+    db.prepare("INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', '4')").run();
   } else {
     const stmt = db.prepare('INSERT OR IGNORE INTO schema_meta (key, value) VALUES (?, ?)');
     stmt.run('version', String(SCHEMA_VERSION));

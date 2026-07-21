@@ -333,6 +333,12 @@ export function resetConfig(): void {
   _instance = null;
 }
 
+/** Check if we are running in a cloud container environment */
+export function isCloudMode(): boolean {
+  return !!(process.env['K_SERVICE'] || process.env['GOOGLE_APPLICATION_CREDENTIALS']);
+}
+
+
 /** Generate a default config file */
 export function writeDefaultConfig(path: string): void {
   writeFileSync(path, JSON.stringify(DEFAULTS, null, 2) + "\n");

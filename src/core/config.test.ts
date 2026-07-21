@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { loadConfig, resetConfig, writeDefaultConfig } from './config.js';
+import { loadConfig, resetConfig, writeDefaultConfig, isCloudMode } from './config.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { mkdtempSync } from 'node:fs';
@@ -90,4 +90,32 @@ describe('Configuration', () => {
     expect(content.binanceBaseUrl).toBe('https://data-api.binance.vision');
     expect(content.dataDir).toBe('/data/crypto-radar');
   });
+
+  describe('isCloudMode', () => {
+    const originalEnv = { ...process.env };
+
+    beforeEach(() => {
+      delete process.env['K_SERVICE'];
+      delete process.env['GOOGLE_APPLICATION_CREDENTIALS'];
+    });
+
+    afterEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    it('returns false when neither K_SERVICE nor GOOGLE_APPLICATION_CREDENTIALS is set', () => {
+      expect(isCloudMode()).toBe(false);
+    });
+
+    it('returns true when K_SERVICE is set', () => {
+      process.env['K_SERVICE'] = 'crypto-radar';
+      expect(isCloudMode()).toBe(true);
+    });
+
+    it('returns true when GOOGLE_APPLICATION_CREDENTIALS is set', () => {
+      process.env['GOOGLE_APPLICATION_CREDENTIALS'] = '/path/to/key.json';
+      expect(isCloudMode()).toBe(true);
+    });
+  });
 });
+

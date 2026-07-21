@@ -169,6 +169,24 @@ describe('Radar Engine', () => {
     expect(result.tickers).toHaveLength(0);
     expect(result.run.numTokens).toBe(0);
   }, 10_000);
+
+  it('skips locking and state saving in cloud mode', async () => {
+    process.env['K_SERVICE'] = 'crypto-radar';
+    const { acquireLock, releaseLock, saveState, loadState } = await import('./radar.js');
+    
+    const lockAcquired = acquireLock(tmpDir);
+    expect(lockAcquired).toBe(true);
+    expect(fs.existsSync(path.join(tmpDir, 'radar.lock'))).toBe(false);
+    
+    releaseLock(tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'radar.lock'))).toBe(false);
+
+    saveState({ test: 123 }, tmpDir);
+    expect(fs.existsSync(path.join(tmpDir, 'crypto-radar-state.json'))).toBe(false);
+    expect(loadState(tmpDir)).toBeNull();
+
+    delete process.env['K_SERVICE'];
+  });
 });
 
 describe('displayRadar', () => {

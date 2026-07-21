@@ -28,8 +28,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import numpy as np
-
 logger = logging.getLogger(__name__)
 
 # Bump when OnlineModel's pickle layout changes incompatibly.
@@ -154,7 +152,7 @@ class OnlineModel:
             raise
 
     @staticmethod
-    def load(path: str) -> "OnlineModel":
+    def load(path: str) -> OnlineModel:
         """Deserialize a model from a pickle file.
 
         Raises:

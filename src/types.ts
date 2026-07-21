@@ -503,3 +503,50 @@ export type CollectorReport = {
   errors: string[];
   durationMs: number;
 };
+
+export interface TaskPayload {
+  runId: string;
+  tsUtc: string;
+  tickers?: Array<{ symbol: string; tokenId?: string | null }>;
+  signals?: Array<{ symbol: string; compositeScore?: number | null }>;
+}
+
+export interface TokenTraceRow {
+  trace_id: string;
+  run_id: string;
+  symbol: string;
+  token_id?: string | null;
+  observed_at: string;
+  outcome_at?: string | null;
+  last_price: number | null;
+  price_change_pct: number | null;
+  volume: number | null;
+  spread_pct?: number | null;
+  market_cap?: number | null;
+  rsi?: number | null;
+  macd_histogram?: number | null;
+  bb_width?: number | null;
+  atr_pct?: number | null;
+  adx?: number | null;
+  regime?: string | null;
+  composite_score?: number | null;
+  direction?: string | null;
+  analysis_text?: string | null;
+  prediction_direction?: string | null;
+  prediction_confidence?: number | null;
+  gemini_raw?: string | null;
+  needs_analysis?: number | null;
+  analyzed_at?: string | null;
+  outcome_evaluated?: number | null;
+  outcome_evaluated_at?: string | null;
+  outcome_price?: number | null;
+  outcome_change_pct?: number | null;
+  outcome_high?: number | null;
+  outcome_low?: number | null;
+  outcome_volume?: number | null;
+  outcome_is_rugpull?: number | null;
+  outcome_pnl_pct?: number | null;
+  outcome_classification?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+}

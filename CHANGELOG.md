@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.7.0] — 2026-07-20
+
+### Added
+
+- **Stateless Cloud Run Transition & File Write Guards** — Implemented configuration guards in `src/radar.ts` and `src/daemon.ts` to disable state/PID file-writes, lock files, and WebSocket push hubs in Cloud Run mode to enable completely stateless scaling.
+- **Cloud Task Handlers & Endpoint API** (`src/api/fastify/routes/tasks.ts`) — Developed dedicated task queue route endpoints `/api/tasks/gemini-analyze`, `/api/tasks/paper-trade`, `/api/tasks/model-retrain`, and `/api/tasks/evaluate-outcomes` secured with a shared cron secret.
+- **OpenAI-Compatible Provider Routing & Vertex Fallback** (`src/core/llm-provider.ts`) — Added support for OpenAI-compatible completions endpoints alongside Vertex AI Gemini. Refactored `src/analysis/gemini.ts` to support routing legacy signature calls through the LLM provider, avoiding circular dependencies.
+- **SQLite GCS Synchronization & ML Model Backups** (`src/store/db.ts`) — Created automatic synchronization pipelines (`syncFromBucket()`/`syncToBucket()`) to save/restore SQLite database files to/from Google Cloud Storage in production. Expanded sync logic to download and upload Python ML model/normalization assets on server startup and retraining.
+- **Terraform Configuration** (`infra/main.tf`) — Authored infrastructure files to configure Pub/Sub topics, Cloud Task queues with custom rate limits and retries, and storage buckets.
+- **Evaluation SQL Queries & A/B Prompt Templates** (`infra/evaluation-queries.sql`) — Formulated template queries for BigQuery tracking overall win rates, confusion matrices, daily accuracy trends, and candidate prompt A/B testing with `ML.GENERATE_TEXT`.
+- **Alpine Multi-Stage Containerization** (`Dockerfile`) — Replaced the bookworm-slim base with a lightweight, secure `node:22-alpine` multi-stage build running the stateless server endpoint.
+- **Strict Linting & Strong Type Safety** — Resolved all remaining compilation and ESLint warnings in production code. Introduced strict interfaces `TokenTraceRow`, `TaskPayload`, and `LLMTraceData` to fully replace `any` and `unknown` types.
+- **Config & Schema Import Alignment** — Restored critical exports and imports in `src/core/llm-provider.ts` and `src/store/db.ts`, integrating them directly into the runtime lifecycles (calling `loadConfig()` during token analysis and utilizing `SCHEMA_DDL` to log schema parameters during migrations).
+- **Interactive AI Paper-Trading Advisor** (`src/api/fastify/routes/portfolio.ts`) — Created a `POST /api/portfolio/chat` route endpoint allowing users to converse with an AI quant trading assistant that directly executes simulated paper trades on user command.
+- **Refined News Filter Matching** (`src/news.ts`) — Relaxed the overly restrictive `POISON_PATTERNS` regex filter to allow standard crypto financial keywords (e.g. *price*, *trading*, *buy*, *sell*) while keeping tutorial and spam protection intact.
+
+### Removed
+
+- **Legacy WebSocket Hub (`src/api/ws.ts`)** — Completely removed the WebSocket server, broadcast hooks, and the `ws` package dependency. This aligns with a purely request-driven, stateless architecture optimized for Google Cloud Run (avoiding scale-to-zero connection blockages and timeout overhead).
+
 ## [2.6.0] — 2026-07-19
 
 ### Added

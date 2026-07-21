@@ -20,14 +20,13 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './core/config.js';
+import { loadConfig, isCloudMode } from './core/config.js';
 import { logger } from './core/logger.js';
 import { fetchAllTickers, fetchKlines } from './binance.js';
 import { getTokenList, getBinancePair, getActiveTokenCount, reloadTokenConfig } from './tokens.js';
 import { Cache, getGlobalCache } from './core/cache.js';
 import { logWarn } from './core/errors.js';
 import { Store } from './store/db.js';
-import { createWsHub } from './api/ws.js';
 import { batchPredict, persistPredictions, resolveActiveModel } from './ml/predict.js';
 import { assembleDataset } from './ml/dataset.js';
 import { buildFeatures, enrichFeatures } from './ml/features.js';
@@ -62,7 +61,6 @@ let _refreshCount = 0;
 let _scanCount = 0;
 let _errorCount = 0;
 let _store: Store | null = null;
-let _wsHub: ReturnType<typeof createWsHub> | null = null;
 
 // ── ML state (F8) ──
 let _lastMlTrain = 0;
@@ -469,7 +467,6 @@ async function startFastify(): Promise<{ fastify: import('fastify').FastifyInsta
 
   fastify.post('/scan-complete', () => {
     _scanCount++;
-    if (_wsHub) _wsHub.broadcast('news', { scanCount: _scanCount, ts: Date.now() });
     return { ok: true, scanCount: _scanCount };
   });
 
@@ -484,6 +481,7 @@ async function startFastify(): Promise<{ fastify: import('fastify').FastifyInsta
 // ── PID file management ──
 
 function writePid(): void {
+  if (isCloudMode()) return;
   const dir = path.dirname(getPidFile());
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(getPidFile(), String(process.pid));
@@ -499,6 +497,7 @@ function readPid(): number | null {
 }
 
 function removePid(): void {
+  if (isCloudMode()) return;
   try {
     if (fs.existsSync(getPidFile())) fs.unlinkSync(getPidFile());
   } catch { /* ignore */ }
@@ -543,13 +542,6 @@ export async function runDaemon(): Promise<void> {
   _ready = true;
   log.info(`Daemon ready on http://0.0.0.0:${port} — refresh every ${refreshMs / 1000}s`);
 
-  // ── WebSocket push hub (attaches to Fastify's underlying http.Server) ──
-  try {
-    _wsHub = createWsHub(fastify.server, _store);
-    log.info('WebSocket push hub started');
-  } catch (err) {
-    log.warn('Failed to start WebSocket hub', { error: String(err) });
-  }
 
   // Initial warm-up
   log.info('Pre-warming caches...');
@@ -568,7 +560,6 @@ export async function runDaemon(): Promise<void> {
   const shutdown = async () => {
     log.info('Shutting down daemon...');
     clearInterval(refreshTimer);
-    if (_wsHub) _wsHub.close();
     await fastify.close();
     if (_store) _store.close();
     removePid();

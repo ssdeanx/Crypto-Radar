@@ -104,13 +104,10 @@ const SOURCE_TIERS: Record<string, number> = {
 const MIN_MATCH_RELEVANCE = 0.5;
 const TIER_PENALTY_THRESHOLD = 0.2;  // extra relevance needed for tier 3+ feeds
 
-// Poison headlines to filter out (SEO spam, roundups, etc.)
 const POISON_PATTERNS = [
-  /price|prediction|worth|buy|sell|trading|market cap/i,
+  /price prediction/i,
   /roundup|recap|weekly|daily|top.*crypto/i,
   /how to|guide|explain|what is/i,
-  /etf|spot.*etf/i,
-  /meme|shitcoin/i,
 ];
 
 const FETCH_TIMEOUT_MS = 15_000;
