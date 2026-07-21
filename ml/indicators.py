@@ -246,12 +246,12 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         import pandas_ta_classic as ta
     except ImportError:
         return {}
-        
+
     def val(s):
         if s is None: return None
         v = s.iloc[-1]
         return None if pd.isna(v) or not np.isfinite(v) else float(v)
-        
+
     out: dict = {
         'rsi': None,
         'mfi': None,
@@ -286,21 +286,21 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
     }
     if len(df) < 5:
         return out
-        
+
     c = df['close']
     h = df['high']
     l = df['low']
     o = df['open']
     v = df['volume']
-    
+
     # RSI
     rsi = ta.rsi(c, length=14)
     out['rsi'] = val(rsi) if rsi is not None else None
-    
+
     # MFI
     mfi = ta.mfi(h, l, c, v, length=14)
     out['mfi'] = val(mfi) if mfi is not None else None
-    
+
     # BBands
     bb = ta.bbands(c, length=20, std=2)
     if bb is not None and len(bb.columns) >= 5:
@@ -313,7 +313,7 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['bb'] = None
-    
+
     # MACD
     macd = ta.macd(c, fast=12, slow=26, signal=9)
     if macd is not None and len(macd.columns) >= 3:
@@ -324,36 +324,36 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['macd'] = { 'macd': None, 'histogram': None, 'signal': None }
-    
+
     # ATR
     atr = ta.atr(h, l, c, length=14)
     atr_val = val(atr) if atr is not None else None
     close_val = val(c)
     out['atrPct'] = (atr_val / close_val * 100) if atr_val and close_val else None
-    
+
     # Vol Trend
     if len(v) >= 14:
         recent = v.iloc[-7:].mean()
         older = v.iloc[-14:-7].mean()
         out['volTrend'] = (recent / older) - 1 if older > 0 else 0.0
     else: out['volTrend'] = None
-    
+
     # Price vs EMA50
     ema50 = ta.ema(c, length=50)
     ema50_val = val(ema50) if ema50 is not None else None
     out['priceVsEma50'] = ((close_val - ema50_val) / ema50_val * 100) if close_val and ema50_val else None
-    
+
     # OBV
     obv = ta.obv(c, v)
     out['obv'] = val(obv) if obv is not None else None
-    
+
     # Vol vs Avg
     if len(v) >= 20:
         avg_vol = v.iloc[:-1].mean()
         cur_vol = val(v)
         out['volVsAvg'] = (cur_vol / avg_vol) - 1 if avg_vol > 0 and cur_vol is not None else None
     else: out['volVsAvg'] = None
-    
+
     # Stochastic
     stoch = ta.stoch(h, l, c, k=14, d=3, smooth_k=3)
     if stoch is not None and len(stoch.columns) >= 2:
@@ -363,7 +363,7 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['stochastic'] = { 'k': None, 'd': None }
-    
+
     # Ichimoku
     ichi, _ = ta.ichimoku(h, l, c)
     if ichi is not None and len(ichi.columns) >= 5:
@@ -376,23 +376,23 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['ichimoku'] = { 'conversionLine': None, 'baseLine': None, 'spanA': None, 'spanB': None, 'laggingSpan': None }
-    
+
     # Williams R
     willr = ta.willr(h, l, c, length=14)
     out['williamsR'] = val(willr) if willr is not None else None
-    
+
     # CMF
     cmf = ta.cmf(h, l, c, v, length=20)
     out['cmf'] = val(cmf) if cmf is not None else None
-    
+
     # TSI
     tsi = ta.tsi(c, fast=13, slow=25)
     out['tsi'] = val(tsi.iloc[:, 0]) if tsi is not None else None
-    
+
     # ADX
     adx = ta.adx(h, l, c, length=14)
     out['adx'] = val(adx.iloc[:, 0]) if adx is not None and len(adx.columns) > 0 else None
-    
+
     # PSAR
     psar = ta.psar(h, l, c)
     if psar is not None and len(psar.columns) >= 4:
@@ -411,11 +411,11 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['psar'] = { 'sar': None, 'acceleration': 0.02, 'isReversal': False }
-    
+
     # CCI
     cci = ta.cci(h, l, c, length=20)
     out['cci'] = val(cci) if cci is not None else None
-    
+
     # Keltner Channels
     kc = ta.kc(h, l, c, length=20, scalar=2)
     if kc is not None and len(kc.columns) >= 3:
@@ -426,27 +426,27 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['keltner'] = { 'lower': None, 'middle': None, 'upper': None }
-    
+
     # ROC
     roc = ta.roc(c, length=12)
     out['roc'] = val(roc) if roc is not None else None
-    
+
     # VWAP
     vwap = ta.vwap(h, l, c, v)
     out['vwap'] = val(vwap) if vwap is not None else None
-    
+
     # Force Index
     efi = ta.efi(c, v, length=13)
     out['forceIndex'] = val(efi) if efi is not None else None
-    
+
     # ADL
     ad = ta.ad(h, l, c, v)
     out['adl'] = val(ad) if ad is not None else None
-    
+
     # Chaikin Osc
     adosc = ta.adosc(h, l, c, v)
     out['chaikinOsc'] = val(adosc) if adosc is not None else None
-    
+
     # StochRSI
     stochrsi = ta.stochrsi(c)
     if stochrsi is not None and len(stochrsi.columns) >= 2:
@@ -456,11 +456,11 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['stochRsi'] = { 'k': None, 'd': None }
-    
+
     # TRIX
     trix = ta.trix(c, length=15)
     out['trix'] = val(trix.iloc[:, 0]) if trix is not None else None
-    
+
     # KST
     kst = ta.kst(c)
     if kst is not None and len(kst.columns) >= 2:
@@ -470,7 +470,7 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['kst'] = { 'kst': None, 'signal': None }
-    
+
     # Elder Ray
     eri = ta.eri(h, l, c, length=13)
     if eri is not None and len(eri.columns) >= 2:
@@ -480,15 +480,15 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         }
     else:
         out['elderRay'] = { 'bullPower': None, 'bearPower': None }
-    
+
     # Fisher
     fisher = ta.fisher(h, l, length=9)
     out['fisher'] = val(fisher.iloc[:, 0]) if fisher is not None else None
-    
+
     # Mass Index
     massi = ta.massi(h, l)
     out['massIndex'] = val(massi) if massi is not None else None
-    
+
     # Range Pos Window
     period_h = h.max()
     period_l = l.max()
@@ -497,7 +497,7 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         out['rangePosWindow'] = (close_val - period_l) / rng
     else:
         out['rangePosWindow'] = 0.5
-        
+
     return out
 
 if __name__ == '__main__':
@@ -506,9 +506,9 @@ if __name__ == '__main__':
         if not input_data.strip():
             print("[]")
             sys.exit(0)
-            
+
         data = json.loads(input_data)
-        
+
         if isinstance(data, dict) and "batches" in data:
             results = {}
             for key, rows in data["batches"].items():
@@ -528,11 +528,11 @@ if __name__ == '__main__':
 
         # Expected structure: {"rows": [...]} or just a list of rows
         rows = data.get('rows', []) if isinstance(data, dict) else data
-        
+
         if not rows:
             print("{}")
             sys.exit(0)
-            
+
         df = pd.DataFrame(rows)
         # Type conversions to ensure correctness
         if 'open_time' in df.columns:
@@ -541,7 +541,7 @@ if __name__ == '__main__':
         for col in ['open', 'high', 'low', 'close', 'volume']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
-        
+
         indicators = compute_latest_indicators(df)
         print(json.dumps(indicators))
         sys.exit(0)

@@ -23,10 +23,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 import numpy as np
+from online import OnlineModel
 
 # Import from local sibling modules
-from predict import load_model, _load_norm_stats
-from online import OnlineModel
+from predict import _load_norm_stats, load_model
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
-        
+
         try:
             req = json.loads(body.decode("utf-8"))
         except Exception as e:
@@ -95,7 +95,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
         feature_names = manager.feature_names
         if not feature_names and rows:
             feature_names = [k for k, v in rows[0].items() if isinstance(v, (int, float, bool))]
-        
+
         if not feature_names:
             self._send_response(400, {"error": "No feature names available"})
             return
@@ -119,7 +119,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
                 else:
                     x_row.append(float(val))
             X.append(x_row)
-            
+
         X = np.array(X, dtype=np.float64)
 
         try:
@@ -147,28 +147,28 @@ class DaemonHandler(BaseHTTPRequestHandler):
                 "confidence": round(confidence, 4),
                 "probs": ordered_probs,
             }
-            
+
             # Mix in online model prediction if available
             if manager.online_model and i < len(rows):
                 om_res = manager.online_model.predict_proba(rows[i])
                 res["online_probs"] = om_res
                 res["online_direction"] = manager.online_model.predict(rows[i])
-                
+
             results.append(res)
-            
+
         self._send_response(200, results)
 
     def _handle_fit(self, req):
         if not manager.online_model:
             self._send_response(400, {"error": "Online model not loaded"})
             return
-            
+
         features = req.get("features")
         label = req.get("label")
         if features is None or label is None:
             self._send_response(400, {"error": "Expected 'features' and 'label'"})
             return
-            
+
         try:
             manager.online_model.partial_fit(features, label)
             self._send_response(200, {"status": "trained", "total_updates": manager.online_model._total_updates})
@@ -180,7 +180,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
         if not manager.online_model:
             self._send_response(400, {"error": "Online model not loaded"})
             return
-            
+
         try:
             manager.online_model.save(str(manager.online_model_path))
             self._send_response(200, {"status": "saved", "path": str(manager.online_model_path)})
@@ -214,13 +214,13 @@ if __name__ == "__main__":
     if manager.catboost_model.classes_ is None:
         logger.error("CatBoost model has no classes_")
         sys.exit(1)
-    
+
     manager.classes = list(manager.catboost_model.classes_)
     manager.class_to_idx = {int(cls): idx for idx, cls in enumerate(manager.classes)}
-    
+
     # Load norm stats
     manager.norm_stats = _load_norm_stats(args.norm_stats)
-    
+
     if args.features:
         manager.feature_names = args.features.split(",")
     elif manager.norm_stats and "featureNames" in manager.norm_stats:

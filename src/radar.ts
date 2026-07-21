@@ -20,7 +20,7 @@ import { fetchAndMatchNews, appendNewsToJsonl } from './news.js';
 import { computeSignals } from './signals.js';
 import { logger } from './core/logger.js';
 import { getGlobalCache, resetGlobalCache } from './core/cache.js';
-import { loadConfig } from './core/config.js';
+import { loadConfig, isCloudMode } from './core/config.js';
 import type { RadarConfig } from './core/config.js';
 import { StrategyEngine } from './analysis/engine.js';
 import type { AggregatedSignal } from './analysis/strategies.js';
@@ -41,6 +41,7 @@ export function _resetTestCache(): void {
 
 /** Acquire a process lock to prevent concurrent radar runs (daemon safety). */
 export function acquireLock(dataDir?: string): boolean {
+  if (isCloudMode()) return true;
   const dir = dataDir ?? loadConfig().dataDir;
   const lockFile = path.join(dir, 'radar.lock');
   if (fs.existsSync(lockFile)) return false;
@@ -50,6 +51,7 @@ export function acquireLock(dataDir?: string): boolean {
 
 /** Release the process lock acquired by acquireLock(). */
 export function releaseLock(dataDir?: string): void {
+  if (isCloudMode()) return;
   const dir = dataDir ?? loadConfig().dataDir;
   const lockFile = path.join(dir, 'radar.lock');
   if (fs.existsSync(lockFile)) fs.unlinkSync(lockFile);
@@ -57,6 +59,7 @@ export function releaseLock(dataDir?: string): void {
 
 /** Persist lightweight run state to disk for crash recovery. */
 export function saveState(state: Record<string, unknown>, dataDir?: string): void {
+  if (isCloudMode()) return;
   const dir = dataDir ?? loadConfig().dataDir;
   const stateFile = path.join(dir, 'crypto-radar-state.json');
   fs.writeFileSync(stateFile, JSON.stringify(state), 'utf-8');
@@ -64,6 +67,7 @@ export function saveState(state: Record<string, unknown>, dataDir?: string): voi
 
 /** Load previously persisted run state, or null if none exists. */
 export function loadState(dataDir?: string): Record<string, unknown> | null {
+  if (isCloudMode()) return null;
   const dir = dataDir ?? loadConfig().dataDir;
   const stateFile = path.join(dir, 'crypto-radar-state.json');
   if (!fs.existsSync(stateFile)) return null;
@@ -477,6 +481,7 @@ async function appendToLog<T>(
   header: string,
   formatter: (item: T) => string,
 ): Promise<void> {
+  if (isCloudMode()) return;
   try {
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     const filePath = path.join(dataDir, fileName);

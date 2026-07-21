@@ -20,9 +20,9 @@ This track implements the full transition of the Crypto Radar backend to a state
 - **Infrastructure Definitions (`infra/main.tf`)**: Define Pub/Sub topic and Cloud Tasks queues.
 
 ### Phase 2: Gemini / LLM Integration
-- **LLM Provider Router (`src/core/llm-provider.ts`)**: Single wrapper function `analyzeToken(symbol, traceData)` routing calls based on `RADAR__AI_BASE_URL`:
-  - Route to `openai-compatible.ts` if defined.
-  - Route to Vertex AI Gemini (`gemini.ts`) if undefined.
+- **LLM Provider Router (`src/core/llm-provider.ts`)**: Single wrapper function `analyzeToken(symbol, traceData)` routing calls based on `RADAR__AI_ENV` (explicit DEV vs PROD switcher):
+  - Route to `openai-compatible.ts` (Ollama/Mock endpoints) in `DEV` mode (or if `RADAR__AI_BASE_URL` is set).
+  - Route to Vertex AI Gemini (`gemini.ts`) in `PROD` mode.
 - **Parsing**: Extract `prediction_direction` (BULLISH/BEARISH/NEUTRAL) and `prediction_confidence` (0-1) from the LLM outputs.
 - **BigQuery Setup**: Documentation and SQL templates for setting up BQ Vertex AI Connection and Remote Model (`crypto_radar.gemini_pro` calling `gemini-3.1-pro`).
 
@@ -33,6 +33,8 @@ This track implements the full transition of the Crypto Radar backend to a state
   - Insert raw trace records in `Store.persistRun()`.
   - Update prediction columns upon LLM task completion.
   - Scheduled query/endpoint to query past prices after 24h and backfill outcomes.
+- **AI Paper-Trading Advisor Endpoint (`POST /api/portfolio/chat`)**: Integrated a Socratic portfolio bot under `/api/portfolio/chat` that analyzes user performance and automatically executes simulated trades on command.
+- **Refined News Collector Matching (`src/news.ts`)**: Relaxed the poison filters to allow normal market keywords (e.g. *price*, *trading*) to process.
 
 ### Phase 4: Batch Evaluation & Prompt A/B Testing
 - **Evaluation SQL Queries (`infra/evaluation-queries.sql`)**: Include queries for win rates, average returns, and confusion matrix comparing prediction direction vs actual 24h outcomes.

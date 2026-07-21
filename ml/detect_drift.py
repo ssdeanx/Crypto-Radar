@@ -42,7 +42,6 @@ import json
 import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

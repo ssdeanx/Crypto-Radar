@@ -1,14 +1,14 @@
 # 🛰️ Crypto Radar — Production Data Pipeline SPEC
 
 > **Project:** Multi-chain crypto market data collection pipeline  
-> **Status:** v2.6.0 · Production  (July 19, 2026)  
+> **Status:** v2.7.0 · Production  (July 21, 2026)  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
 
 ## 1. Production Vision
 
-Crypto Radar is a **multi-chain crypto market data collection pipeline** that runs on a schedule (system cron) to fetch, compute, persist, and serve market intelligence data. It is implemented in TypeScript and runs as a compiled Node.js binary (`node dist/cli.js`).
+Crypto Radar is a **multi-chain crypto market data collection pipeline** that runs on a schedule (system cron or Cloud Scheduler) to fetch, compute, persist, and serve market intelligence data. It is implemented in TypeScript and runs as a compiled Node.js binary (`node dist/cli.js`).
 
 **What it does in production:**
 
@@ -16,7 +16,7 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 2. **Persistent storage** — All collected data is written to a configurable data directory (`/data/crypto-radar/` by default) in multiple formats: CSV logs (append-only), JSONL datasets (ML-ready), SQLite database (structured queries), BigQuery (async enterprise data lake), and human-readable reports (`.txt`, `.md`, `.xlsx`).
 3. **Signal computation** — A 3-strategy composite signal engine (Momentum 40%, Mean Reversion 20%, Trend Following 40%) produces buy/sell/neutral signals with confidence scores.
 4. **ML predictions** — Optional CatBoost-based direction classifier with auto-retrain, concept drift detection, batch inference, and Gemini 3.1 Pro reasoning enrichment.
-5. **API serving** — A warm daemon exposes a REST API (Fastify, port 9877) and WebSocket streams (port 9878) for querying collected data. Fastify is the sole API implementation.
+5. **API serving** — A warm daemon or stateless Cloud Run server exposes a Fastify REST API (port 8080/9877) for querying collected and predicted data. Fastify is the sole API implementation.
 6. **Data retention** — Monthly archive compression, configurable log pruning (default 30 days), SHA-256 checksum verification on all log files.
 
 **Key design tenets:**
@@ -27,7 +27,7 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 4. **Self-contained** — Single compiled Node.js binary. No Hermes Agent, no Python runtime for core functionality (Python is ML-only).
 5. **Data-portable** — All persistent data resolves through a configurable data directory. Secondary legacy path auto-detected for migration.
 6. **Fastify-only API** — The legacy `src/api/rest.ts` REST handler has been removed. All HTTP serving goes through Fastify.
-7. **Cloud Run–ready** — Debian-based Dockerfile (`node:22-bookworm-slim`) with `deploy.sh` automates Artifact Registry, Cloud Build, Cloud Run deploy, and Cloud Scheduler cron for managed serverless deployment.
+7. **Cloud Run–ready** — Alpine-based Dockerfile (`node:22-alpine`) with `deploy.sh` automates Artifact Registry, Cloud Build, Cloud Run deploy, and Cloud Scheduler cron for managed serverless deployment. GCS bucket synchronization automatically saves/restores SQLite db files and CatBoost ML model assets.
 
 ---
 
@@ -60,7 +60,6 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 │  │  ├── paper-trade.ts  (Paper trading portfolio simulation)             │   │
 │  │  ├── backtest.ts     (Strategy backtesting + weight optimization)     │   │
 │  │  ├── daemon.ts       (Warm HTTP daemon — Fastify server)              │   │
-│  │  ├── ws.ts           (WebSocket streams — Binance)                    │   │
 │  │  ├── jupiter.ts      (Jupiter DEX price aggregator — Solana)          │   │
 │  │  ├── pdf-export.ts   (HTML/PDF self-contained report generator)       │   │
 │  │  ├── xlsx-export.ts  (Excel export via exceljs)                       │   │
@@ -79,8 +78,8 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 │  │  ├── store/          (SQLite store + BigQuery async store —             │   │
 │  │  │                     node:sqlite, WAL mode, @google-cloud/bigquery)   │   │
 │  │  ├── sources/        (Futures, Fear & Greed, orderbook, cross-asset)   │   │
-│  │  ├── api/            (Fastify-only — REST handler + WS hub +           │   │
-│  │  │                     enterprise routes in fastify/ subdirectory)     │   │
+│  │  ├── api/            (Fastify-only — REST handler + enterprise routes  │   │
+│  │  │                     in fastify/ subdirectory)                       │   │
 │  │  ├── ml/             (Features, labels, dataset, predict, drift,       │   │
 │  │  │                     online, monitor — TypeScript orchestration)     │   │
 │  │  ├── io/             (Charts, advanced-charts, shared-svg,             │   │
@@ -178,8 +177,7 @@ crontab entry (every hour):
 deploy.sh (or manual gcloud commands):
   → Artifact Registry: docker push crypto-radar-image
   → Cloud Run deploy: gcloud run deploy crypto-radar
-    → Fastify server on :9877 (auto-mapped to HTTPS)
-    → WebSocket on :9878
+    → Fastify server on :8080/9877 (auto-mapped to HTTPS)
     → BigQuery async store active
     → Gemini 3.1 Pro reasoning on ML predictions
   → Cloud Scheduler: POST /api/cron/scan every hour
@@ -192,7 +190,6 @@ deploy.sh (or manual gcloud commands):
 node dist/cli.js daemon start
   → Fastify server on :9877
   → REST endpoints at /api/*
-  → WebSocket on :9878
   → Cache refresh every 300s (configurable)
   → Cron endpoint at POST /api/cron/scan (secret-gated, rate-limit exempt)
 ```
@@ -210,7 +207,7 @@ The `plugin/` directory contains a Python bridge (`plugin/__init__.py`) and plug
 
 - The Hermes plugin loading flow (`hermes plugins install`) expects a working Python bridge interacting with the Hermes runtime — this path has never been validated end-to-end.
 - The `crypto_` tool registration (`crypto_radar_scan`, `crypto_radar_signals`, etc.) was never successfully published to the marketplace.
-- All CLI commands, API routes, cron automation, and WebSocket streams work independently without the Hermes plugin layer.
+- All CLI commands, API routes, and cron automation work independently without the Hermes plugin layer.
 
 **Do not rely on the Hermes plugin integration for production.** Use the production cron path or the CLI/REST API directly.
 
@@ -410,14 +407,10 @@ Fastify server (port 9877) with CORS, JWT auth, rate-limit, compression, Swagger
 | POST | `/api/auth/login` | JWT login |
 | GET | `/api/auth/me` | Current user info |
 
-### 3.11 WebSocket Hub (4 channels, port 9878)
+### 3.11 WebSocket Hub (Removed for Cloud Run parity)
 
-| Channel | Payload | Frequency |
-|---------|---------|-----------|
-| `prices` | `{symbol, price, change, volume, ts}` | On scan-complete |
-| `signals` | `{symbol, direction, confidence, ts}` | On scan-complete |
-| `news` | `{symbol, headline, source, relevance, ts}` | On scan-complete |
-| `portfolio` | `{profile, pnl, holdings}` | On trade-execution |
+The WebSocket server, standalone client connections, and raw `ws` dependencies have been deprecated and completely removed. The pipeline utilizes purely stateless, request-driven Fastify HTTP APIs to support serverless scaling, avoiding scale-to-zero connection blockages and timeout overhead associated with persistent TCP sockets in serverless runtimes.
+
 
 ### 3.12 Paper Trading
 
@@ -661,7 +654,6 @@ All env vars use the `RADAR__` prefix. They override values from `radar.config.j
 | `RADAR__TIMEFRAME_WEIGHTS` | `{"15m":0.1,"1h":0.25,"4h":0.3,"1d":0.35}` | Timeframe weight overrides |
 | **Daemon** | | |
 | `RADAR__DAEMON_PORT` | `9877` | Daemon HTTP server port |
-| `RADAR__WS_PORT` | `9878` | WebSocket server port |
 | `RADAR__DAEMON_REFRESH_SEC` | `300` | Cache refresh interval in seconds |
 | `RADAR__CRON_SECRET` | — | Secret for POST /api/cron/scan endpoint |
 | **Store** | | |
@@ -743,7 +735,6 @@ RADAR__DATA_DIR=/data/crypto-radar node dist/cli.js daemon start
 The daemon pre-warms caches on startup and refreshes every 300s (configurable). Provides:
 
 - REST API on port 9877 (Fastify with CORS, JWT, rate-limit, compression, Swagger at `/docs`)
-- WebSocket on port 9878 (4 channels: prices, signals, news, portfolio)
 - Health check at `/health`
 - Manual cache refresh at `/refresh`
 - Secure cron endpoint at `POST /api/cron/scan` (rate-limit exempt, secret-gated)
@@ -832,7 +823,6 @@ These commands exist for development and interactive use. They are not the prima
 | `crypto-radar tokens --validate` | Validate registry tokens against live Binance API |
 | `crypto-radar chart` | Generate SVG or ASCII charts |
 | `crypto-radar daemon` | Start/stop/status warm daemon |
-| `crypto-radar ws` | Start/stop/status WebSocket streams |
 | `crypto-radar onchain` | DeFiLlama on-chain metrics |
 | `crypto-radar health` | System health checks |
 | `crypto-radar configure` | Show or generate configuration |
