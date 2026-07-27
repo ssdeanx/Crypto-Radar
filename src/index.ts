@@ -60,9 +60,6 @@ export {
 export { fetchOnChainMetrics, fetchOnChainPrices, fetchProtocolTvl, fetchProtocolFees, fetchChainTvl } from './onchain.js';
 export type { OnChainMetrics, ProtocolMetrics, ChainMetrics } from './onchain.js';
 
-// WebSocket
-export { BinanceWsClient, tickerStreams, klineStreams } from './ws.js';
-
 // Strategy engine
 export { StrategyEngine } from './analysis/engine.js';
 export { MomentumStrategy } from './analysis/momentum.js';

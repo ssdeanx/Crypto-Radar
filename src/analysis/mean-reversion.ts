@@ -301,7 +301,7 @@ export class MeanReversionStrategy implements SignalStrategy {
       ) {
         // Bearish divergence confirmed
         const rsiDrop = prev.rsi - last.rsi;
-        const divStrength = rsiDrop / prev.rsi;
+        const divStrength = prev.rsi > 0 ? rsiDrop / prev.rsi : 0;
         return {
           divergence: divStrength,
           type: 'bearish',
@@ -321,7 +321,7 @@ export class MeanReversionStrategy implements SignalStrategy {
       ) {
         // Bullish divergence confirmed
         const rsiRise = last.rsi - prev.rsi;
-        const divStrength = rsiRise / (100 - prev.rsi);
+        const divStrength = prev.rsi < 100 ? rsiRise / (100 - prev.rsi) : 0;
         return {
           divergence: divStrength,
           type: 'bullish',

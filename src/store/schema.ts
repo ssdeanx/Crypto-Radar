@@ -1,4 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { logger } from '../core/logger.js';
+
+const log = logger.child({ module: 'schema' });
 
 export const SCHEMA_VERSION = 4;
 
@@ -227,8 +230,8 @@ export function migrate(db: DatabaseSync): void {
         }
       }
       db.prepare("INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', ?)").run(String(SCHEMA_VERSION));
-    } catch {
-      // Non-fatal: migration best-effort
+    } catch (err) {
+      log.error('Migration v1→v2 failed, falling back to INSERT OR IGNORE', { error: String(err) });
       db.prepare("INSERT OR IGNORE INTO schema_meta (key, value) VALUES ('version', ?)").run(String(SCHEMA_VERSION));
     }
   }
@@ -236,13 +239,19 @@ export function migrate(db: DatabaseSync): void {
   if (currentVersion < 4) {
     try {
       db.exec("ALTER TABLE predictions ADD COLUMN reasoning TEXT;");
-    } catch { /* ignore if column already exists */ }
+    } catch (err) {
+      log.error('ALTER TABLE predictions ADD COLUMN reasoning failed (likely already exists)', { error: String(err) });
+    }
     try {
       db.exec("ALTER TABLE predictions ADD COLUMN outcome REAL;");
-    } catch { /* ignore if column already exists */ }
+    } catch (err) {
+      log.error('ALTER TABLE predictions ADD COLUMN outcome failed (likely already exists)', { error: String(err) });
+    }
     try {
       db.exec("ALTER TABLE predictions ADD COLUMN outcome_classification TEXT;");
-    } catch { /* ignore if column already exists */ }
+    } catch (err) {
+      log.error('ALTER TABLE predictions ADD COLUMN outcome_classification failed (likely already exists)', { error: String(err) });
+    }
     db.prepare("INSERT OR REPLACE INTO schema_meta (key, value) VALUES ('version', '4')").run();
   } else {
     const stmt = db.prepare('INSERT OR IGNORE INTO schema_meta (key, value) VALUES (?, ?)');

@@ -7,11 +7,14 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import type { FastifyPluginAsync } from 'fastify';
+import { timingSafeEqual } from 'node:crypto';
+import { z } from 'zod';
 import { getTokenList } from '../../../tokens.js';
 import { computeAllIndicators } from '../../../indicators.js';
 import { detectRegime } from '../../../analysis/regime.js';
 import { loadConfig } from '../../../core/config.js';
 import type { Kline } from '../../../types.js';
+import { listProfiles, PaperTrader, DIFFICULTY_BALANCES } from '../../../paper-trade.js';
 
 // ── Helpers ──
 
@@ -21,6 +24,86 @@ function intParam(val: string | null | undefined, def: number): number {
   return Number.isFinite(n) ? Math.floor(n) : def;
 }
 
+/** Convert a Zod schema to JSON Schema for Fastify, stripping the $schema ref that ajv can't resolve. */
+function toSchema<T extends z.ZodType>(schema: T): Record<string, unknown> {
+  const json = z.toJSONSchema(schema);
+  delete (json as Record<string, unknown>)['$schema'];
+  return json;
+}
+
+// ── Zod runtime validation schemas (used via schema.querystring / schema.params) ──
+
+const symbolParamsSchema = z.object({ symbol: z.string().min(1) });
+
+const tickersQuerySchema = z.object({
+  symbol: z.string().optional(),
+  chain: z.string().optional(),
+  limit: z.coerce.number().int().min(1).default(200).optional(),
+}).passthrough();
+
+const signalsQuerySchema = z.object({
+  symbol: z.string().optional(),
+  minScore: z.coerce.number().min(0).max(100).optional(),
+  direction: z.enum(['buy', 'sell', 'neutral']).optional(),
+  limit: z.coerce.number().int().min(1).default(200).optional(),
+}).passthrough();
+
+const klinesQuerySchema = z.object({
+  interval: z.enum(['15m', '1h', '4h', '1d']).default('1h').optional(),
+  from: z.coerce.number().int().optional(),
+  to: z.coerce.number().int().optional(),
+  limit: z.coerce.number().int().min(1).default(500).optional(),
+}).passthrough();
+
+const futuresQuerySchema = z.object({
+  type: z.string().default('funding').optional(),
+  limit: z.coerce.number().int().min(1).default(50).optional(),
+}).passthrough();
+
+const orderbookQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).default(50).optional(),
+}).passthrough();
+
+const newsQuerySchema = z.object({
+  symbol: z.string().optional(),
+  limit: z.coerce.number().int().min(1).default(50).optional(),
+}).passthrough();
+
+const regimeQuerySchema = z.object({
+  interval: z.string().optional(),
+  limit: z.coerce.number().int().min(30).default(200).optional(),
+}).passthrough();
+
+const predictionsQuerySchema = z.object({
+  symbol: z.string().optional(),
+  model_id: z.string().optional(),
+  minConfidence: z.coerce.number().min(0).max(1).optional(),
+  limit: z.coerce.number().int().min(1).default(200).optional(),
+}).passthrough();
+
+const predictionsSymbolQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).default(50).optional(),
+}).passthrough();
+
+const fearGreedQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).default(30).optional(),
+}).passthrough();
+
+const crossAssetQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).default(50).optional(),
+}).passthrough();
+
+const portfolioTradesQuerySchema = z.object({
+  profile: z.string().default('trader1').optional(),
+  status: z.enum(['open', 'closed']).optional(),
+}).passthrough();
+
+const portfolioQuerySchema = z.object({
+  profile: z.string().default('trader1').optional(),
+}).passthrough();
+
+const leaderboardQuerySchema = z.object({}).passthrough();
+
 export const restRoutes: FastifyPluginAsync = async (app) => {
   const store = app.store;
 
@@ -29,7 +112,14 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     const config = loadConfig();
     const auth = request.headers.authorization;
     const token = auth?.startsWith('Bearer ') ? auth.slice(7) : '';
-    if (!config.apiToken || token !== config.apiToken) {
+    const isValid = (() => {
+      try {
+        const a = Buffer.from(token);
+        const b = Buffer.from(config.apiToken ?? '');
+        return a.length === b.length && timingSafeEqual(a, b);
+      } catch { return false; }
+    })();
+    if (!config.apiToken || !isValid) {
       return reply.status(401).send({ error: 'Unauthorized', code: 'UNAUTHORIZED' });
     }
     return { ok: true, message: 'Collection triggered' };
@@ -45,7 +135,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/tickers ──
-  app.get('/api/tickers', async (request) => {
+  app.get('/api/tickers', { schema: { querystring: toSchema(tickersQuerySchema) } }, async (request) => {
     const { symbol, chain, limit } = request.query as {
       symbol?: string; chain?: string; limit?: string;
     };
@@ -57,7 +147,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/tickers/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/tickers/:symbol', async (request, reply) => {
+  app.get<{ Params: { symbol: string } }>('/api/tickers/:symbol', { schema: { params: toSchema(symbolParamsSchema) } }, async (request, reply) => {
     const rows = await store.getLatestTickers({ symbol: request.params.symbol, limit: 1 });
     if (rows.length === 0) {
       return reply.status(404).send({ error: `Symbol not found: ${request.params.symbol}`, code: 'NOT_FOUND' });
@@ -66,7 +156,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/signals ──
-  app.get('/api/signals', async (request) => {
+  app.get('/api/signals', { schema: { querystring: toSchema(signalsQuerySchema) } }, async (request) => {
     const { symbol, minScore, direction, limit } = request.query as {
       symbol?: string; minScore?: string; direction?: string; limit?: string;
     };
@@ -79,7 +169,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/signals/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/signals/:symbol', async (request, reply) => {
+  app.get<{ Params: { symbol: string } }>('/api/signals/:symbol', { schema: { params: toSchema(symbolParamsSchema) } }, async (request, reply) => {
     const rows = await store.getSignals({ limit: 1000 });
     const filtered = rows.filter(r => r.symbol === request.params.symbol);
     if (filtered.length === 0) {
@@ -89,7 +179,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/klines/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/klines/:symbol', async (request) => {
+  app.get<{ Params: { symbol: string } }>('/api/klines/:symbol', { schema: { params: toSchema(symbolParamsSchema), querystring: toSchema(klinesQuerySchema) } }, async (request) => {
     const { interval, from, to, limit } = request.query as {
       interval?: string; from?: string; to?: string; limit?: string;
     };
@@ -101,7 +191,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/futures/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/futures/:symbol', async (request, reply) => {
+  app.get<{ Params: { symbol: string } }>('/api/futures/:symbol', { schema: { params: toSchema(symbolParamsSchema), querystring: toSchema(futuresQuerySchema) } }, async (request, reply) => {
     const { type, limit } = request.query as { type?: string; limit?: string };
     const symbol = request.params.symbol;
     const t = type ?? 'funding';
@@ -122,13 +212,13 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/orderbook/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/orderbook/:symbol', async (request) => {
+  app.get<{ Params: { symbol: string } }>('/api/orderbook/:symbol', { schema: { params: toSchema(symbolParamsSchema), querystring: toSchema(orderbookQuerySchema) } }, async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 50);
     return await store.getOrderBook(request.params.symbol, limit);
   });
 
   // ── GET /api/news ──
-  app.get('/api/news', async (request) => {
+  app.get('/api/news', { schema: { querystring: toSchema(newsQuerySchema) } }, async (request) => {
     const { symbol, limit } = request.query as { symbol?: string; limit?: string };
     return await store.getNews({
       symbol: symbol ?? undefined,
@@ -148,7 +238,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/regime/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/regime/:symbol', async (request, reply) => {
+  app.get<{ Params: { symbol: string } }>('/api/regime/:symbol', { schema: { params: toSchema(symbolParamsSchema), querystring: toSchema(regimeQuerySchema) } }, async (request, reply) => {
     const { interval, limit } = request.query as { interval?: string; limit?: string };
     const rows = await store.getKlines(request.params.symbol, interval ?? '1h', {
       limit: intParam(limit, 200),
@@ -176,7 +266,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/portfolio/trades ──
-  app.get('/api/portfolio/trades', async (request) => {
+  app.get('/api/portfolio/trades', { schema: { querystring: toSchema(portfolioTradesQuerySchema) }, preHandler: [app.authenticate] }, async (request) => {
     const { profile, status } = request.query as { profile?: string; status?: string };
     const trades = await store.getPaperTrades(
       profile ?? 'trader1',
@@ -186,7 +276,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/portfolio ──
-  app.get('/api/portfolio', async (request) => {
+  app.get('/api/portfolio', { schema: { querystring: toSchema(portfolioQuerySchema) }, preHandler: [app.authenticate] }, async (request) => {
     const profile = (request.query as { profile?: string }).profile ?? 'trader1';
     const trades = await store.getPaperTrades(profile);
 
@@ -233,17 +323,59 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
       pnl: totalPnl,
       winRate: totalTrades > 0 ? wins / totalTrades : 0,
       totalTrades,
+      startBalance: STARTING_BALANCE,
     };
   });
 
+  // ── GET /api/portfolio/leaderboard ──
+  app.get('/api/portfolio/leaderboard', { schema: { querystring: toSchema(leaderboardQuerySchema) }, preHandler: [app.authenticate] }, async () => {
+    const profiles = await listProfiles();
+
+    const leaderboard = [];
+    for (const p of profiles) {
+      const trader = new PaperTrader({ profileName: p.profileName });
+      await trader.load();
+      const report = await trader.getReport();
+
+      // Infer difficulty from startBalance
+      let difficulty: string | undefined;
+      for (const [key, balance] of Object.entries(DIFFICULTY_BALANCES)) {
+        if (balance === trader.startBalance) {
+          difficulty = key;
+          break;
+        }
+      }
+
+      leaderboard.push({
+        profile: p.profileName,
+        cash: trader.cash,
+        holdings: trader.holdings.map(h => ({
+          symbol: h.symbol,
+          amount: h.amount,
+          avgEntryPrice: h.avgEntryPrice,
+        })),
+        pnl: report.totalReturn,
+        winRate: report.winRate,
+        totalTrades: report.totalTrades,
+        startBalance: trader.startBalance,
+        difficulty,
+      });
+    }
+
+    // Sort by PnL descending
+    leaderboard.sort((a, b) => b.pnl - a.pnl);
+
+    return { profiles: leaderboard };
+  });
+
   // ── GET /api/fear-greed ──
-  app.get('/api/fear-greed', async (request) => {
+  app.get('/api/fear-greed', { schema: { querystring: toSchema(fearGreedQuerySchema) } }, async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 30);
     return await store.getFearGreed(limit);
   });
 
   // ── GET /api/cross-asset ──
-  app.get('/api/cross-asset', async (request) => {
+  app.get('/api/cross-asset', { schema: { querystring: toSchema(crossAssetQuerySchema) } }, async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 50);
     return await store.getCrossAsset(limit);
   });
@@ -254,7 +386,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/predictions ──
-  app.get('/api/predictions', async (request) => {
+  app.get('/api/predictions', { schema: { querystring: toSchema(predictionsQuerySchema) }, preHandler: [app.authenticate] }, async (request) => {
     const { symbol, model_id, minConfidence, limit } = request.query as {
       symbol?: string; model_id?: string; minConfidence?: string; limit?: string;
     };
@@ -267,7 +399,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/predictions/:symbol ──
-  app.get<{ Params: { symbol: string } }>('/api/predictions/:symbol', async (request) => {
+  app.get<{ Params: { symbol: string } }>('/api/predictions/:symbol', { schema: { params: toSchema(symbolParamsSchema), querystring: toSchema(predictionsSymbolQuerySchema) }, preHandler: [app.authenticate] }, async (request) => {
     const limit = intParam((request.query as { limit?: string }).limit, 50);
     return await store.getPredictions({ symbol: request.params.symbol, limit });
   });

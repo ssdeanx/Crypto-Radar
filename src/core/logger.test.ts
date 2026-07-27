@@ -44,12 +44,13 @@ describe('Logger', () => {
     expect(messages.some(m => m.includes('should not appear'))).toBe(false);
   });
 
-  it('writes to file when configured', () => {
+  it('writes to file when configured', async () => {
     const tmpDir = mkdtempSync(path.join(tmpdir(), 'logger-test-'));
     const logFile = 'test.log';
     logger.configure({ level: 'info', logDir: tmpDir, logFile });
 
     logger.info('file message');
+    await new Promise<void>(resolve => resolve()); // drain microtask queue (flush is queued)
     const filePath = path.join(tmpDir, logFile);
     expect(fs.existsSync(filePath)).toBe(true);
     const content = fs.readFileSync(filePath, 'utf-8');

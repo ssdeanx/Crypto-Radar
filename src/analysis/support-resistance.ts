@@ -206,8 +206,8 @@ export function findSupportResistance(
   const nearestS = nearestSupport;
   const nearestR = nearestResistance;
 
-  const upsideTarget = nearestR ? ((nearestR.price - lastPrice) / lastPrice) * 100 : null;
-  const downsideRisk = nearestS ? ((lastPrice - nearestS.price) / lastPrice) * 100 : null;
+  const upsideTarget = nearestR && lastPrice > 0 ? ((nearestR.price - lastPrice) / lastPrice) * 100 : null;
+  const downsideRisk = nearestS && lastPrice > 0 ? ((lastPrice - nearestS.price) / lastPrice) * 100 : null;
 
   return {
     symbol,

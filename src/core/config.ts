@@ -7,6 +7,7 @@ import { resolve } from "node:path";
 import { homedir } from "node:os";
 import { ConfigError, logWarn } from "./errors.js";
 import type { PriceAlert } from "./alerts.js";
+import { RadarConfigSchema } from "./config.schema.js";
 
 const DEFAULT_DATA_DIR = `/data/crypto-radar`;
 
@@ -307,14 +308,29 @@ export function loadConfig(configPath?: string): RadarConfig {
     base.ml.training.shap = envMap.ml_shap === "true";
   }
 
-  // 3. Secondary data directory auto-detection + env override
+  // 3. Secondary data directory auto-detection + env override (RADAR__SECONDARY_DATA_DIR)
   const legacyDir = `${homedir()}/.hermes/data/crypto-radar`;
   if (!base.secondaryDataDir && existsSync(legacyDir)) {
     base.secondaryDataDir = legacyDir;
   }
   if (envMap.secondary_data_dir) base.secondaryDataDir = envMap.secondary_data_dir;
 
-  // 4. Startup info log — show resolved data dirs on first load
+  // Support both CRON_SECRET and RADAR__CRON_SECRET (prefer RADAR__ prefix convention)
+  if (envMap.cron_secret) process.env['CRON_SECRET'] = envMap.cron_secret;
+
+  // 4. Zod schema validation — warn on config issues but don't crash
+  const result = RadarConfigSchema.safeParse(base);
+  if (!result.success) {
+    logWarn(
+      "config",
+      "Config validation issues: " +
+        result.error.issues
+          .map((i) => i.path.join(".") + ": " + i.message)
+          .join("; "),
+    );
+  }
+
+  // 5. Startup info log — show resolved data dirs on first load
   if (base.secondaryDataDir) {
     logWarn(
       "config",
@@ -335,7 +351,7 @@ export function resetConfig(): void {
 
 /** Check if we are running in a cloud container environment */
 export function isCloudMode(): boolean {
-  return !!(process.env['K_SERVICE'] || process.env['GOOGLE_APPLICATION_CREDENTIALS']);
+  return !!(process.env['K_SERVICE'] || process.env['CLOUD_RUN_JOB'] || process.env['K_CONFIGURATION'] || process.env['GOOGLE_APPLICATION_CREDENTIALS']);
 }
 
 

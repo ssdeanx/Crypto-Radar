@@ -132,7 +132,7 @@ export function computePortfolio(
     const ret = w.reduce((sum, wi, i) => sum + wi * expectedReturns[i]!, 0);
 
     const varMat = wVec.mmul(cov).mmul(wT);
-    const vol = Math.sqrt(varMat.get(0, 0));
+    const vol = Math.sqrt(Math.max(0, varMat.get(0, 0)));
 
     const sharpe = vol > 1e-10 ? (ret - riskFreeRate) / vol : -Infinity;
 

@@ -23,6 +23,8 @@ import type {
 import type { OnChainMetrics } from './onchain.js';
 import { PROTOCOL_MAP } from './onchain.js';
 import { getTokenById } from './tokens.js';
+import { logger } from './core/logger.js';
+const log = logger.child({ module: 'signals' });
 
 // ═══════════════════════════════════════════════════════════════════════
 // Alert deduplication
@@ -256,6 +258,9 @@ export function computeOnchainBoost(
   // Resolve token metadata to validate chain support for on-chain metrics
   const tokenMeta = getTokenById(tokenId);
   const chain: Chain | undefined = tokenMeta?.chain;
+  if (tokenMeta && tokenMeta.sym !== symbol) {
+    log.warn('[onchain] Symbol mismatch', { expected: symbol, got: tokenMeta.sym, tokenId });
+  }
   if (chain && chain !== 'ethereum' && chain !== 'solana' && chain !== 'bnb') {
     // On-chain metrics only meaningful for EVM/Solana/BSC chains
     return 0;
@@ -777,12 +782,14 @@ function buildAlerts(
   if (t.priceChangePercent <= -5) alerts.push('🔴 DIP (>5% drop)');
   if (t.priceChangePercent >= 5) alerts.push('🟢 PUMP (>5% gain)');
 
-  // ADX-based trend strength alerts
+  // ADX-based trend strength alerts (adjusted by ADX filter multiplier)
+  const adxThreshold = 15 * (adxAdj.multiplier || 1);
+  const adxStrongThreshold = 40 * (adxAdj.multiplier || 1);
   if (tech?.adx != null) {
-    if (tech.adx < 15) {
-      alerts.push(`Very weak trend (ADX ${tech.adx.toFixed(1)})`);
-    } else if (tech.adx > 40) {
-      alerts.push(`Strong trend (ADX ${tech.adx.toFixed(1)})`);
+    if (tech.adx < adxThreshold) {
+      alerts.push(`Weak trend ${adxAdj.category} (ADX ${tech.adx.toFixed(1)})`);
+    } else if (tech.adx > adxStrongThreshold) {
+      alerts.push(`Strong trend ${adxAdj.category} (ADX ${tech.adx.toFixed(1)})`);
     }
   }
 

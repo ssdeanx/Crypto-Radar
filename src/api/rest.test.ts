@@ -26,6 +26,7 @@ const TEST_DB = resolve(tmpdir(), `crypto-radar-rest-test-${Date.now()}.db`);
 describe('REST handler (Fastify)', () => {
   let store: Store;
   let app: Awaited<ReturnType<typeof createApp>>;
+  let jwtToken: string;
 
   beforeEach(async () => {
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
@@ -33,6 +34,7 @@ describe('REST handler (Fastify)', () => {
     store.migrate();
     app = await createApp({ store, jwtSecret: 'test-secret', corsOrigin: '*' });
     await app.ready();
+    jwtToken = app.jwt.sign({});
   });
 
   afterEach(async () => {
@@ -226,7 +228,10 @@ describe('REST handler (Fastify)', () => {
 
   describe('GET /api/portfolio', () => {
     it('returns empty portfolio when no trades', async () => {
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio' });
+      const res = await app.inject({
+        method: 'GET', url: '/api/portfolio',
+        headers: { authorization: `Bearer ${jwtToken}` },
+      });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body).toMatchObject({ profile: 'trader1', cash: 100000, holdings: [], totalTrades: 0 });
@@ -242,7 +247,10 @@ describe('REST handler (Fastify)', () => {
       ];
       for (const t of trades) await store.upsertPaperTrade(t);
 
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio' });
+      const res = await app.inject({
+        method: 'GET', url: '/api/portfolio',
+        headers: { authorization: `Bearer ${jwtToken}` },
+      });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body.profile).toBe('trader1');
@@ -267,7 +275,10 @@ describe('REST handler (Fastify)', () => {
         entry_price: 150, entry_time: '2026-07-07T12:00:00Z',
         quantity: 10, exit_price: null, exit_time: null, pnl: null, fees: null, status: 'open',
       });
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio/trades' });
+      const res = await app.inject({
+        method: 'GET', url: '/api/portfolio/trades',
+        headers: { authorization: `Bearer ${jwtToken}` },
+      });
       expect(res.statusCode).toBe(200);
       expect(res.json().trades).toHaveLength(1);
     });
@@ -283,7 +294,10 @@ describe('REST handler (Fastify)', () => {
         entry_price: 50000, entry_time: '2026-07-07T12:00:00Z',
         quantity: 1, exit_price: 52000, exit_time: '2026-07-07T14:00:00Z', pnl: 2000, fees: null, status: 'closed',
       });
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio/trades?status=open' });
+      const res = await app.inject({
+        method: 'GET', url: '/api/portfolio/trades?status=open',
+        headers: { authorization: `Bearer ${jwtToken}` },
+      });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body.trades).toHaveLength(1);

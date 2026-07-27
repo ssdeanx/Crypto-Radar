@@ -91,9 +91,19 @@ function f(v: number | null | undefined, d: number = 2): string {
   return v.toFixed(d);
 }
 
-/** CSV-safe string: wrap in double quotes, escape internal quotes */
+/** Escape a CSV field value to prevent formula injection (e.g. =, +, -, @). */
+function escapeCsvField(val: string): string {
+  if (val.length === 0) return val;
+  const first = val[0];
+  if (first === '=' || first === '+' || first === '-' || first === '@' || first === '\t') {
+    return "'\t" + val;
+  }
+  return val;
+}
+
+/** CSV-safe string: wrap in double quotes, escape internal quotes and formula-injection chars */
 function q(s: string): string {
-  return `"${s.replace(/"/g, '""')}"`;
+  return `"${escapeCsvField(s).replace(/"/g, '""')}"`;
 }
 
 /**

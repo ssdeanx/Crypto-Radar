@@ -1,7 +1,7 @@
 # 🛰️ Crypto Radar — Production Data Pipeline SPEC
 
 > **Project:** Multi-chain crypto market data collection pipeline  
-> **Status:** v2.7.0 · Production  (July 21, 2026)  
+> **Status:** v2.8.1 · Production  (July 22, 2026)  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
@@ -251,14 +251,14 @@ The `plugin/` directory contains a Python bridge (`plugin/__init__.py`) and plug
 
 Dynamic top-75 volume detection via `--dynamic` flag with synthesized `TokenDef` fallback for high-volume unmatched tickers.
 
-### 3.3 Technical Indicators (28 computed + sub-components)
+### 3.3 Technical Indicators (36 computed + sub-components)
 
 | Category | Indicators |
 |----------|-----------|
-| **Momentum** (8) | RSI (14), MFI (14), Stochastic (%K/%D), Williams %R (14), CCI (20), ROC (12), TRIX (15), Fisher Transform (10) |
-| **Trend** (9) | MACD (12/26/9), SMA (20), EMA (20/50), Ichimoku Cloud, ADX (14), Parabolic SAR, KST, Keltner Channels (20/2), Mass Index (14) |
-| **Volatility** (4) | Bollinger Bands (20/2), ATR (14), VWAP, Volatility Trend |
-| **Volume** (7) | OBV, CMF (20), Force Index (13), ADL, Chaikin Oscillator (3/10), Volume vs Avg, Volume Trend |
+| **Momentum** (10) | RSI (14), MFI (14), Stochastic (%K/%D), Williams %R (14), CCI (20), ROC (12), TRIX (15), Fisher Transform (10), KAMA (14), ALMA (20) |
+| **Trend** (12) | MACD (12/26/9), SMA (20), EMA (20/50), Ichimoku Cloud, ADX (14), Parabolic SAR, KST, Keltner Channels (20/2), Mass Index (14), HMA (20), SuperTrend (10/3), SSL (10) |
+| **Volatility** (6) | Bollinger Bands (20/2), ATR (14), VWAP, Volatility Trend, Z-Score (20), Donchian Channels (20) |
+| **Volume** (8) | OBV, CMF (20), Force Index (13), ADL, Chaikin Oscillator (3/10), Volume vs Avg, Volume Trend, Pivot Points |
 
 ### 3.4 Signal Engine
 
@@ -296,6 +296,8 @@ Dynamic top-75 volume detection via `--dynamic` flag with synthesized `TokenDef`
 | **TS-PY Contract** | `predict.ts` ↔ `predict.py` | Feature name header validation between subprocess caller and Python — `PredictContractHeader` interface ensures feature alignment |
 | **Python Code Quality** | `pyproject.toml` | mypy strict mode + ruff lint, enforced via `npm run check:python` |
 | **Gemini Reasoning** | `gemini.ts` | Vertex AI Gemini 3.1 Pro enriches ML predictions with professional market reasoning using recent klines, prices, and signals — stored in the `reasoning` field |
+| **Gemini Reasoning Batching** | `gemini.ts` | Per-token LLM calls batched into single API call via `batchGenerateReasoning()`. Both local LLM (`RADAR__AI_BASE_URL`) and Vertex AI paths supported |
+| **Python ML Test Suite** | `ml/tests/` | 209 tests achieving 86% coverage across all 8 Python modules (model.py, manifest.py, indicators.py, predict.py, online.py, detect_drift.py, train.py, daemon.py). pytest config, `npm test:python` script |
 
 ### 3.6 News Aggregation
 
@@ -360,6 +362,7 @@ Dynamic top-75 volume detection via `--dynamic` flag with synthesized `TokenDef`
 | **SHA-256 Checksums** | `core/log-rotation.ts` | Sidecar `.sha256` files on all CSV writes, atomic tmp+rename |
 | **Data Retention** | `core/log-rotation.ts` | Auto-prune CSV logs older than N days (default 30) |
 | **Process Lock** | `radar.ts` | `radar.lock` file to prevent concurrent runs |
+| **Advisory File Locking (FileLock)** | `radar.ts`, `news.ts` | Advisory file lock (FileLock) for concurrent write protection on CLI/news CSV append operations, preventing interleaved writes |
 | **PID File** | `daemon.ts` | `daemon.pid` for daemon lifecycle management |
 | **Health Monitoring** | `monitor/health.ts` | Binance, Jupiter, DeFiLlama, cache, feed health checks |
 | **Feed Monitor** | `core/feed-monitor.ts` | Per-feed success/failure tracking, dead feed detection |
@@ -367,12 +370,16 @@ Dynamic top-75 volume detection via `--dynamic` flag with synthesized `TokenDef`
 | **Docker Build Context** | `.dockerignore` | Excludes node_modules, .git, *.test.ts, coverage, .env → 60 MB vs 313 MB |
 | **BigQuery Store** | `store/db.ts` | Async enterprise data lake — tickers, klines, signals, news, predictions, futures tables; in-memory SQLite fallback when GCP unavailable |
 | **Gemini Reasoning** | `gemini.ts` | Vertex AI Gemini 3.1 Pro market reasoning enrichment for ML predictions via Vertex AI client |
+| **Gemini Reasoning Batching** | `gemini.ts` | Per-token LLM calls batched into single API call via `batchGenerateReasoning()` — supports both local LLM (`RADAR__AI_BASE_URL`) and Vertex AI paths |
+| **Configurable CORS Origins** | `src/api/fastify/` | `CORS_ORIGIN` env var replaces hardcoded Vercel URLs. Priority: env var → opts.corsOrigin → localhost defaults |
+| **Configurable Swagger URL** | `src/api/fastify/` | `RADAR__SWAGGER_URL` env var (default http://localhost:8080) replaces hardcoded daemon port 9877 |
+| **Zod Query Validation** | All GET routes | Zod schema validation on all 15+ GET route query params (coerce.number, enum, defaults) for type-safe request handling |
 | **Cloud Run Deploy** | `deploy.sh` | Automated GCP provisioning — Artifact Registry image push, Cloud Build, Cloud Run deploy, Cloud Scheduler cron setup |
 | **Debian Dockerfile** | `Dockerfile` | `node:22-bookworm-slim` base with `uv` Python ML venv for drift detection |
 
 ### 3.10 REST API (30+ endpoints)
 
-Fastify server (port 9877) with CORS, JWT auth, rate-limit, compression, Swagger docs. Fastify is the sole API provider — the legacy `src/api/rest.ts` has been removed.
+Fastify server (port 9877) with CORS, JWT auth, rate-limit, compression, Swagger docs. Fastify is the sole API provider — the legacy `src/api/rest.ts` has been removed. **All 15+ GET route query parameters validated with Zod schemas** (coerce.number, enum, defaults). CORS origins configurable via `CORS_ORIGIN` env var. Swagger URL configurable via `RADAR__SWAGGER_URL` env var.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -655,7 +662,7 @@ All env vars use the `RADAR__` prefix. They override values from `radar.config.j
 | **Daemon** | | |
 | `RADAR__DAEMON_PORT` | `9877` | Daemon HTTP server port |
 | `RADAR__DAEMON_REFRESH_SEC` | `300` | Cache refresh interval in seconds |
-| `RADAR__CRON_SECRET` | — | Secret for POST /api/cron/scan endpoint |
+| `CRON_SECRET` | — | Secret for POST /api/cron/scan endpoint |
 | **Store** | | |
 | `RADAR__STORE_PATH` | `<dataDir>/crypto-radar.db` | SQLite store file path |
 | `RADAR__STORE_RETENTION_DAYS` | `30` | Data retention days in store |
@@ -844,6 +851,7 @@ npm run watch         # Watch mode
 npm run start         # Run CLI
 npm test              # Run vitest suite (~1222+ tests)
 npm run test:coverage # Coverage report
+npm run test:python   # Python ML test suite (pytest, 209 tests)
 npm run lint          # ESLint check
 npm run format        # Prettier check
 npm run daemon        # Start warm daemon
@@ -891,10 +899,10 @@ npm run check:python
 
 ### 8.5 Testing
 
-- **Test framework:** Vitest v4 with v8 coverage provider
-- **Test count:** ~1222 tests across 55+ test files
-- **Coverage targets:** Lines 90.5%, Statements 87.8%, Functions 91.4%, Branches 74.4%
-- **Test types:** Unit, integration, smoke, E2E, fuzz (157 edge-case tests)
+- **Test framework:** Vitest v4 with v8 coverage provider; pytest for Python ML modules
+- **Test count:** ~1222+ TypeScript tests across 55+ test files; 209 Python ML tests achieving 86% coverage
+- **Coverage targets:** Lines 90.5%, Statements 87.8%, Functions 91.4%, Branches 74.4% (TypeScript); 86% coverage (Python ML)
+- **Test types:** Unit, integration, smoke, E2E, fuzz (157 edge-case tests), Python ML (pytest)
 - **Excluded from coverage:** ML modules (Python infra dependency), chart modules (SVG rendering infra)
 
 ### 8.6 Code Quality
@@ -910,6 +918,23 @@ npm run check:python
 ---
 
 ## 9. Changelog
+
+### [2.8.1] — 2026-07-22
+
+**Added:**
+- Production Hardening Sprint — 4 workstreams: Oxlint config repaired (237 warnings, 0 errors), Zod schema validation on 15+ GET routes, advisory FileLock for CSV writes, 27 TS ML unit tests
+- Python ML Pipeline Tests — 209 tests achieving 86% coverage across all 8 Python modules (pytest config, `npm test:python` script)
+- Gemini Reasoning Batching — Per-token LLM calls batched into single API call via `batchGenerateReasoning()`. Both local LLM and Vertex AI paths supported
+- 8 new pandas-ta indicators: KAMA, ALMA, HMA, SuperTrend, SSL, Z-Score, Donchian Channels, Pivot Points (total 36 indicators)
+- Configurable CORS Origins — `CORS_ORIGIN` env var replaces hardcoded Vercel URLs
+- Configurable Swagger URL — `RADAR__SWAGGER_URL` env var replaces hardcoded daemon port 9877
+
+**Changed:**
+- `deploy.sh` no longer deploys `RADAR__AI_API_KEY` secret (development-only; production uses Vertex AI)
+
+**Fixed:**
+- Dead `ws.test.ts` removed (ws.ts deleted in WebSocket removal)
+- Daemon test EADDRINUSE flake — mock listen replaces real port binding
 
 ### [2.6.0] — 2026-07-19
 

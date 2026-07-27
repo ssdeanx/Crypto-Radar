@@ -170,7 +170,8 @@ export function computeVolumeProfile(
         const overlapLow = Math.max(candleLow, bucketLows[b]);
         const overlapHigh = Math.min(candleHigh, bucketHighs[b]);
         const overlap = Math.max(0, overlapHigh - overlapLow);
-        const fraction = overlap / (candleHigh - candleLow);
+        const candleRange = candleHigh - candleLow;
+        const fraction = candleRange > 0 ? overlap / candleRange : 0;
         bucketVolumes[b] += candleVol * fraction;
       }
     }

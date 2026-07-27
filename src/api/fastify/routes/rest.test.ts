@@ -18,6 +18,7 @@ const TEST_DB = resolve(tmpdir(), `crypto-radar-fastify-rest-test-${Date.now()}.
 describe('Fastify REST routes', () => {
   let store: Store;
   let app: Awaited<ReturnType<typeof createApp>>;
+  let jwtToken: string;
 
   beforeEach(async () => {
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
@@ -25,6 +26,7 @@ describe('Fastify REST routes', () => {
     store.migrate();
     app = await createApp({ store, jwtSecret: 'test-secret', corsOrigin: '*' });
     await app.ready();
+    jwtToken = app.jwt.sign({});
   });
 
   afterEach(async () => {
@@ -40,7 +42,7 @@ describe('Fastify REST routes', () => {
         entry_price: 150, entry_time: '2026-07-07T12:00:00Z',
         quantity: 10, exit_price: null, exit_time: null, pnl: null, fees: null, status: 'open',
       });
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio/trades' });
+      const res = await app.inject({ method: 'GET', url: '/api/portfolio/trades', headers: { authorization: `Bearer ${jwtToken}` } });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       expect(body).toHaveProperty('trades');
@@ -52,7 +54,7 @@ describe('Fastify REST routes', () => {
 
   describe('GET /api/portfolio', () => {
     it('derives cash from trade history — starting balance when no trades (F26)', async () => {
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio' });
+      const res = await app.inject({ method: 'GET', url: '/api/portfolio', headers: { authorization: `Bearer ${jwtToken}` } });
       expect(res.statusCode).toBe(200);
       expect(res.json().cash).toBe(100_000);
     });
@@ -66,7 +68,7 @@ describe('Fastify REST routes', () => {
       ];
       for (const t of trades) await store.upsertPaperTrade(t);
 
-      const res = await app.inject({ method: 'GET', url: '/api/portfolio' });
+      const res = await app.inject({ method: 'GET', url: '/api/portfolio', headers: { authorization: `Bearer ${jwtToken}` } });
       expect(res.statusCode).toBe(200);
       const body = res.json();
       // 100000 - (150*10) - (160*5) + 2000 - 1000 = 98700

@@ -22,14 +22,17 @@ async function start() {
   }
 
   const jwtSecretRaw = process.env['RADAR__JWT_SECRET'];
-  if (!jwtSecretRaw) {
-    if (process.env['NODE_ENV'] === 'production') {
-      log.fatal('RADAR__JWT_SECRET must be set in production');
-      process.exit(1);
-    }
+  let jwtSecret: string;
+
+  if (jwtSecretRaw) {
+    jwtSecret = jwtSecretRaw;
+  } else if (process.env['NODE_ENV'] === 'production') {
+    log.fatal('RADAR__JWT_SECRET must be set in production — refusing to start with default');
+    process.exit(1);
+  } else {
+    jwtSecret = 'dev-secret-change-in-production';
     log.warn('RADAR__JWT_SECRET not set — using dev default (NOT for production)');
   }
-  const jwtSecret = jwtSecretRaw ?? 'dev-secret-change-in-production';
 
   const fastify = await createApp({
     store,

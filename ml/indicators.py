@@ -197,6 +197,30 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
         except Exception as e:
             logger.warning("TA STOCH failed: %s", e)
 
+        # 9. KAMA(10) — Kaufman's Adaptive Moving Average
+        try:
+            _add(f"{base}_kama_10", ta.kama(series, length=10, fast=2, slow=30))
+        except Exception as e:
+            logger.warning("TA KAMA failed for %s: %s", base, e)
+
+        # 10. ALMA(9) — Arnaud Legoux Moving Average
+        try:
+            _add(f"{base}_alma_9", ta.alma(series, length=9, sigma=6, distribution_offset=0.85))
+        except Exception as e:
+            logger.warning("TA ALMA failed for %s: %s", base, e)
+
+        # 11. HMA(9) — Hull Moving Average
+        try:
+            _add(f"{base}_hma_9", ta.hma(series, length=9))
+        except Exception as e:
+            logger.warning("TA HMA failed for %s: %s", base, e)
+
+        # 12. Z-Score(21) — volatility-normalized price position
+        try:
+            _add(f"{base}_zscore_21", ta.zscore(series, length=21))
+        except Exception as e:
+            logger.warning("TA Z-Score failed for %s: %s", base, e)
+
     # 9–12. Multi-column indicators (run once, not per-base-column)
     has_ohlc = all(k in col_map for k in ("open", "high", "low", "close"))
     if has_ohlc:
@@ -236,15 +260,72 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
             except Exception as e:
                 logger.warning("TA MFI failed: %s", e)
 
+        # 13–16. Additional multi-column indicators
+        # 13. SuperTrend(10,3)
+        try:
+            _add("supertrend_10_3", ta.supertrend(df[high_c], df[low_c], df[close_c], length=10, multiplier=3))
+        except Exception as e:
+            logger.warning("TA SuperTrend failed: %s", e)
+
+        # 14. SSL Channel(10) — custom (not in pandas_ta_classic)
+        try:
+            ssl_sma = df[close_c].rolling(window=10).mean()
+            ssl_h = df[high_c].rolling(window=10).mean()
+            ssl_l = df[low_c].rolling(window=10).mean()
+            ssl_dir = pd.Series(0, index=df.index, dtype=int)
+            ssl_dir[df[close_c] > ssl_sma] = 1
+            ssl_dir[df[close_c] < ssl_sma] = -1
+            df["ssl_channel_10"] = (ssl_h + ssl_l) / 2
+            ta_cols.append("ssl_channel_10")
+            df["ssl_direction_10"] = ssl_dir
+            ta_cols.append("ssl_direction_10")
+        except Exception as e:
+            logger.warning("TA SSL failed: %s", e)
+
+        # 15. Donchian Channel(20)
+        try:
+            _add("dc_20", ta.donchian(df[high_c], df[low_c], lower_length=20, upper_length=20))
+        except Exception as e:
+            logger.warning("TA Donchian failed: %s", e)
+
+        # 16. Pivot Points(2,2) — custom (not in pandas_ta_classic)
+        try:
+            pp_window = 2 + 2 + 1  # left + right + center
+            high_window = df[high_c].rolling(window=pp_window, center=True).max()
+            low_window = df[low_c].rolling(window=pp_window, center=True).min()
+            pivot_h = df[high_c][df[high_c] == high_window].reindex(df.index)
+            pivot_l = df[low_c][df[low_c] == low_window].reindex(df.index)
+            df["pivot_high_2_2"] = pivot_h
+            ta_cols.append("pivot_high_2_2")
+            df["pivot_low_2_2"] = pivot_l
+            ta_cols.append("pivot_low_2_2")
+        except Exception as e:
+            logger.warning("TA Pivot failed: %s", e)
+
     logger.info("Added %d pandas-ta indicator columns", len(ta_cols))
     return feature_cols + [c for c in ta_cols if c not in feature_cols]
+
+
+# ── Additional TA feature names (for test verification) ────────────────────
+
+
+ADDITIONAL_TA_NAMES: list[str] = [
+    "kama",
+    "alma",
+    "hma",
+    "zscore",
+    "supertrend",
+    "ssl",
+    "donchian",
+    "pivot",
+]
 
 
 def compute_latest_indicators(df: pd.DataFrame) -> dict:
     """Compute all technical indicators for the latest row to serve to the Node.js frontend."""
     try:
         import pandas_ta_classic as ta
-    except ImportError:
+    except Exception:
         return {}
 
     def val(s):
@@ -285,6 +366,16 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         'rangePosWindow': 0.5
     }
     if len(df) < 5:
+        return out
+    
+    # F5: pandas-ta has a bug with 15-40 row DataFrames causing 'iloc cannot enlarge'
+    # Skip pandas-ta for small windows; TS-side indicators are already sufficient
+    if len(df) < 50:
+        # Still compute VWAP and basic info from raw data
+        if 'close' in df.columns and 'volume' in df.columns:
+            c_small = df['close']
+            v_small = df['volume']
+            out['obv'] = float((c_small.diff() > 0).astype(int).replace(0, -1).mul(v_small).sum()) if len(v_small) > 1 else None
         return out
 
     c = df['close']
@@ -519,6 +610,9 @@ if __name__ == '__main__':
                 if 'open_time' in df.columns:
                     df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce').astype('Int64')
                     df.index = pd.to_datetime(df['open_time'], unit='ms')
+                elif 'openTime' in df.columns:
+                    df['openTime'] = pd.to_numeric(df['openTime'], errors='coerce').astype('Int64')
+                    df.index = pd.to_datetime(df['openTime'], unit='ms')
                 for col in ['open', 'high', 'low', 'close', 'volume']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
@@ -538,6 +632,9 @@ if __name__ == '__main__':
         if 'open_time' in df.columns:
             df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce').astype('Int64')
             df.index = pd.to_datetime(df['open_time'], unit='ms')
+        elif 'openTime' in df.columns:
+            df['openTime'] = pd.to_numeric(df['openTime'], errors='coerce').astype('Int64')
+            df.index = pd.to_datetime(df['openTime'], unit='ms')
         for col in ['open', 'high', 'low', 'close', 'volume']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)

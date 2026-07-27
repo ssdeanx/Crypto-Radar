@@ -13,6 +13,7 @@ import { getTokenList } from './tokens.js';
 import { recordFeedResult, getDeadFeeds } from './core/feed-monitor.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { FileLock } from './core/file-lock.js';
 
 // ── Custom RSS Item Fields ───────────────────────────────────────────
 // rss-parser's default Item type covers the common fields. These
@@ -22,6 +23,26 @@ interface CustomItemFields {
   contentEncoded?: string;
   /** Mapped from <dc:date> — Dublin Core date used by some feeds */
   date?: string;
+}
+
+/** Raw post from Reddit JSON API (public, no API key) */
+interface RedditPost {
+  title: string;
+  selftext: string;
+  url: string;
+  created_utc: number;
+  ups: number;
+  upvote_ratio: number;
+  num_comments: number;
+  subreddit: string;
+  link_flair_text: string | null;
+}
+
+/** Reddit engagement metadata for sentiment/relevance boosting */
+interface RedditArticleMeta {
+  ups: number;
+  upvoteRatio: number;
+  numComments: number;
 }
 
 interface FeedDef {
@@ -45,8 +66,13 @@ const NEWS_FEEDS: FeedDef[] = [
   // Google News RSS feeds (free, no API key needed)
   { name: 'Google News Crypto',  url: 'https://news.google.com/rss/search?q=cryptocurrency&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
   { name: 'Google News Bitcoin', url: 'https://news.google.com/rss/search?q=bitcoin&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
-  // X/Twitter via Nitter (no API key, free RSS proxy)
-  { name: 'X Crypto (Nitter)',   url: 'https://nitter.net/search/rss?q=cryptocurrency',  tier: 2, lang: 'en' },
+  // Yahoo Finance RSS feeds (free, no API key needed)
+  { name: 'Yahoo Finance Crypto', url: 'https://finance.yahoo.com/news/rss/crypto', tier: 1 },
+  { name: 'Yahoo Finance Bitcoin', url: 'https://finance.yahoo.com/news/rss/bitcoin', tier: 1 },
+  // Reddit JSON feeds (public, no API key, respects User-Agent)
+  { name: 'Reddit Crypto', url: 'r/cryptocurrency', tier: 2, lang: 'en' },
+  { name: 'Reddit DeFi',    url: 'r/defi',          tier: 2, lang: 'en' },
+  { name: 'Reddit Solana',  url: 'r/solana',        tier: 2, lang: 'en' },
   // ── Solana Ecosystem Feeds ──
   { name: 'Solana Official',     url: 'https://solana.com/news/rss.xml',                               tier: 1 },
   { name: 'Solana Foundation',   url: 'https://solana.com/news/rss',                                    tier: 1 },
@@ -80,7 +106,11 @@ const SOURCE_TIERS: Record<string, number> = {
   'NullTX':        0.4,
   'Google News Crypto': 0.7,
   'Google News Bitcoin': 0.7,
-  'X Crypto (Nitter)':  0.6,
+  'Yahoo Finance Crypto': 0.9,
+  'Yahoo Finance Bitcoin': 0.9,
+  'Reddit Crypto': 0.6,
+  'Reddit DeFi': 0.6,
+  'Reddit Solana': 0.6,
   // Solana ecosystem feeds
   'Solana Official': 1.0,
   'Solana Foundation': 1.0,
@@ -214,6 +244,42 @@ function stripHTML(text: string): string {
 /** Check if headline is poison (SEO spam, etc.) */
 function isPoison(headline: string): boolean {
   return POISON_PATTERNS.some(p => p.test(headline));
+}
+
+/** Fetch Reddit JSON feed (no API key needed, respects User-Agent) */
+async function fetchRedditFeed(subreddit: string): Promise<NewsArticle[]> {
+  const url = `https://www.reddit.com/r/${subreddit}/hot/.json?limit=25`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Crypto-Radar/2.8.1 (market intelligence)',
+        'Accept': 'application/json',
+      },
+    });
+    if (!res.ok) return [];
+    const data = await res.json() as { data: { children: Array<{ data: RedditPost }> } };
+    return data.data.children
+      .filter(c => !c.data.link_flair_text?.toLowerCase().includes('meme'))
+      .map(c => {
+        const article: NewsArticle & { redditMeta?: RedditArticleMeta } = {
+          headline: c.data.title,
+          description: c.data.selftext.slice(0, 500),
+          source: `r/${subreddit}`,
+          domain: 'reddit.com',
+          pubDate: new Date(c.data.created_utc * 1000).toISOString(),
+          url: c.data.url,
+        };
+        // Attach Reddit metadata for downstream sentiment/relevance boosts
+        article.redditMeta = {
+          ups: c.data.ups,
+          upvoteRatio: c.data.upvote_ratio,
+          numComments: c.data.num_comments,
+        };
+        return article;
+      });
+  } catch {
+    return [];
+  }
 }
 
 // ── Sentiment Analysis ──────────────────────────────────────────────────
@@ -377,6 +443,14 @@ export async function fetchAndMatchNews(
     }
 
     try {
+      // Reddit JSON feeds are identified by url starting with 'r/'
+      if (feed.url.startsWith('r/')) {
+        const subreddit = feed.url.slice(2);
+        const articles = await fetchRedditFeed(subreddit);
+        recordFeedResult(feed.name, feed.url, true);
+        return articles;
+      }
+
       const ctrl = new AbortController();
       setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
 
@@ -440,6 +514,19 @@ export async function fetchAndMatchNews(
 
             // Length penalty: -0.2 for very short articles (< 100 chars)
             relevance += getLengthPenalty(article.headline, article.description);
+
+            // Reddit engagement boosts (if article has Reddit metadata)
+            const redditMeta = (article as unknown as Record<string, unknown>).redditMeta as RedditArticleMeta | undefined;
+            if (redditMeta) {
+              // High upvote ratio (> 0.9) → bullish community sentiment
+              if (redditMeta.upvoteRatio > 0.9) relevance += 0.1;
+              // Low upvote ratio (< 0.5) → bearish community sentiment
+              if (redditMeta.upvoteRatio < 0.5) relevance += 0.1;
+              // Active discussion (> 100 comments) → higher relevance
+              if (redditMeta.numComments > 100) relevance += 0.15;
+              // High engagement (> 500 upvotes) → relevance bonus
+              if (redditMeta.ups > 500) relevance += 0.1;
+            }
 
             matches.push({
               runId,
@@ -508,5 +595,7 @@ export function appendNewsToJsonl(newsMatches: NewsMatch[], dataDir: string): vo
     fs.mkdirSync(dir, { recursive: true });
   }
 
-  fs.appendFileSync(filePath, lines.join('\n') + '\n', 'utf-8');
+  FileLock.withLock('news-cache', () => {
+    fs.appendFileSync(filePath, lines.join('\n') + '\n', 'utf-8');
+  });
 }

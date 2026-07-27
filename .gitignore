@@ -2,22 +2,7 @@ node_modules/
 dist/
 coverage/
 
-*.csv
-*.jsonl
 
-*.xlsx
-*.db
-*.db-shm
-*.db-wal
-data/
-data/crypto-radar/*.jsonl
-data/crypto-radar/*.md
-data/crypto-radar/*.txt
-data/crypto-radar/*.csv
-data/crypto-radar/*.xlsx
-data/crypto-radar/*.db
-data/crypto-radar/*.db-shm
-data/crypto-radar/*.db-wal
 *.lock
 .omo/
 .vml/
@@ -28,14 +13,27 @@ catboost_info/
 .hermes/
 ml/__pycache__/
 ml/.pytest_cache/
-ml/models/
-ml/**/optuna_study.db
+
 .env
-dick-sucker-ai/Crypto-Radar/
+
 
 # Docs output
 docs/api/
-crypto-radar-state.json
+*.csv
+*.csv.sha256
+*.txt
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.dump
+deploy.sh
+*.env
+*.xlsx
+
 *.log
 *.tar.gz
 *.skill.md
@@ -49,5 +47,6 @@ crypto-radar-state.json
 # Stray lockfiles from other package managers
 pnpm-lock.yaml
 
-data/crypto-radar/crypto-radar.db
-deploy.sh
+
+.omg/ultragoal/ledger.jsonl
+data/crypto-radar/ml/models/metrics_20260717_223000.json

@@ -3,8 +3,16 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 4.0"
+      version = "~> 6.0"
     }
+  }
+  backend "gcs" {
+    # Usage:
+    #   terraform init -backend-config="bucket=crypto-radar-tfstate-PROJECT_ID"
+    #
+    # The bucket must be created manually before terraform init:
+    #   gcloud storage buckets create gs://crypto-radar-tfstate-PROJECT_ID \
+    #     --project=PROJECT_ID --location=us-central1
   }
 }
 
@@ -77,6 +85,13 @@ resource "google_cloud_tasks_queue" "model_retrain" {
   retry_config {
     max_attempts = 1
   }
+}
+
+# ── Service Account ──
+
+resource "google_service_account" "crypto_radar_sa" {
+  account_id   = "crypto-radar-sa"
+  display_name = "Crypto Radar Service Account"
 }
 
 # ── Storage Bucket for SQLite Backups ──

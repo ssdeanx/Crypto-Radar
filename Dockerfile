@@ -19,6 +19,7 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Copy build output, node_modules and dependencies
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules ./node_modules
+RUN npm prune --omit=dev
 COPY package*.json ./
 COPY scripts/ ./scripts/
 COPY plugin.yaml ./
@@ -32,6 +33,6 @@ RUN uv venv --python 3.12 /app/.venv-ml && \
 EXPOSE 8080
 
 ENV PORT=8080
-ENV RADAR__DAEMON_PORT=8080
-
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 CMD node -e "fetch('http://localhost:8080/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+USER node
 CMD ["node", "dist/server.js"]

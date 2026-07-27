@@ -115,7 +115,7 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        const predictions = await batchPredict(app.store, symbolsToScan, '1h', {
+        const predictions = await batchPredict(app.store, symbolsToScan.map(s => s.endsWith('USDT') ? s : s + 'USDT'), '1h', {
           modelPath,
           normalizationStats: normalizationStats as import('../../../ml/types.js').NormalizationStats | undefined,
           minConfidence: 0,
@@ -123,21 +123,39 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
         });
 
         if (predictions.length > 0) {
-          // Enrich with Gemini reasoning
+          // Enrich with Gemini reasoning — single batch API call instead of N
           try {
-            const { generateGeminiReasoning } = await import('../../../analysis/gemini.js');
+            const { batchGenerateReasoning } = await import('../../../analysis/gemini.js');
+
+            // Pre-fetch ticker data and klines for every prediction
+            const enriched: Array<{
+              symbol: string;
+              direction: -1 | 0 | 1;
+              confidence: number;
+              ticker: { lastPrice: number; priceChangePercent: number };
+              signal: { compositeScore: number; regime?: string | null };
+              klines: import('../../../types.js').KlineRow[];
+            }> = [];
+
             for (const pred of predictions) {
               const ticker = scanResult?.tickers?.find(t => t.symbol === pred.symbol);
-              const klines = await app.store.getKlines(pred.symbol, '1h', { limit: 10, order: 'desc' });
               if (ticker) {
-                const reasoning = await generateGeminiReasoning(
-                  pred.symbol,
+                const klines = await app.store.getKlines(pred.symbol, '1h', { limit: 10, order: 'desc' });
+                enriched.push({
+                  symbol: pred.symbol,
+                  direction: pred.direction,
+                  confidence: pred.confidence,
+                  ticker: { lastPrice: ticker.lastPrice, priceChangePercent: ticker.priceChangePercent },
+                  signal: { compositeScore: ticker.compositeScore ?? 50, regime: ticker.regime },
                   klines,
-                  { lastPrice: ticker.lastPrice, priceChangePercent: ticker.priceChangePercent },
-                  { compositeScore: ticker.compositeScore ?? 50, regime: ticker.regime }
-                );
-                pred.reasoning = reasoning;
+                });
               }
+            }
+
+            // Single batch LLM call for all predictions
+            const reasoningMap = await batchGenerateReasoning(enriched);
+            for (const pred of predictions) {
+              pred.reasoning = reasoningMap.get(pred.symbol) ?? '';
             }
           } catch (geminiErr) {
             log.warn('Failed to generate Gemini reasoning during prediction enrichment', { error: String(geminiErr) });

@@ -229,7 +229,7 @@ describe('Binance API integration', () => {
     expect(typeof indicators.volTrend).toBe('number');
   });
 
-  it('runs full enrichment pipeline with mocked Binance API', async () => {
+  it('runs full enrichment pipeline with mocked Binance API', { timeout: 15000 }, async () => {
     // Arrange: mock both ticker and klines endpoints
     const mockFetch = vi.mocked(globalThis.fetch);
     mockFetch

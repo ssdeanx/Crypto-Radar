@@ -32,6 +32,21 @@ import { mean, sampleStandardDeviation } from './math/index.js';
 // Types
 // ═══════════════════════════════════════════════════════════════════════
 
+/** Difficulty levels for paper trading */
+export const Difficulty = {
+  EASY: 'easy',
+  HARD: 'hard',
+  EXTREME: 'extreme',
+} as const;
+export type Difficulty = (typeof Difficulty)[keyof typeof Difficulty];
+
+/** Default starting balance per difficulty level */
+export const DIFFICULTY_BALANCES: Record<Difficulty, number> = {
+  [Difficulty.EASY]: 10_000,
+  [Difficulty.HARD]: 1_000,
+  [Difficulty.EXTREME]: 100,
+};
+
 /** Configuration for the PaperTrader */
 export interface PaperTraderConfig {
   /** Starting fake USD balance (default: 10,000) */
@@ -42,6 +57,8 @@ export interface PaperTraderConfig {
   dataDir?: string;
   /** Profile name for multi-profile support. Default "trader1" */
   profileName?: string;
+  /** Difficulty level (determines starting balance if startingBalance not set). Defaults to EASY */
+  difficulty?: Difficulty;
 }
 
 /** A single trade record */
@@ -110,6 +127,18 @@ export interface PerformanceReport {
   perToken: PerTokenReport[];
 }
 
+/** Result of a multi-profile comparison run */
+export interface ProfileResult {
+  profileName: string;
+  difficulty: Difficulty;
+  startBalance: number;
+  currentBalance: number;
+  totalPnl: number;
+  winRate: number;
+  tradeCount: number;
+  sharpeLike: number;
+}
+
 /** Trade recommendation from signal integration */
 export interface TradeRecommendation {
   symbol: string;
@@ -160,7 +189,6 @@ export interface ProfileSummary {
 // Constants
 // ═══════════════════════════════════════════════════════════════════════
 
-const DEFAULT_STARTING_BALANCE = 10_000;
 const VALID_PROFILE_NAME = /^[a-zA-Z0-9_-]{1,64}$/;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -205,11 +233,14 @@ export class PaperTrader {
         `Invalid profile name "${this.profileName}". Use letters, numbers, hyphens, and underscores only (1–64 chars).`,
       );
     }
+    const difficulty = config.difficulty ?? Difficulty.EASY;
+    const startingBalance = config.startingBalance ?? DIFFICULTY_BALANCES[difficulty];
     this.config = {
-      startingBalance: config.startingBalance ?? DEFAULT_STARTING_BALANCE,
+      startingBalance,
       allowedTokens: config.allowedTokens ?? [],
       dataDir: config.dataDir ?? loadConfig().dataDir,
       profileName: this.profileName,
+      difficulty,
     };
     this.createdAt = new Date().toISOString();
     this.tokenCache = new Map();
@@ -735,6 +766,7 @@ export class PaperTrader {
    * @param recommendations Trade recommendations from signals or user
    * @param maxPerTrade Max USD to spend per buy trade (0 = use all cash)
    * @param minConfidence Minimum confidence (0–1) to execute a trade
+   * @param maxPositions Maximum number of concurrent positions (default 5)
    * @param profileName Optional profile name to execute trades against a different profile
    * @returns Array of executed trades
    */
@@ -742,6 +774,7 @@ export class PaperTrader {
     recommendations: TradeRecommendation[],
     maxPerTrade: number = 1000,
     minConfidence: number = 0.3,
+    maxPositions: number = 5,
     profileName?: string,
   ): Promise<PaperTrade[]> {
     // If profileName is specified and different from current, delegate to a sub-trader
@@ -755,7 +788,7 @@ export class PaperTrader {
         // Profile doesn't exist — create it with default balance
         await subTrader.save();
       }
-      const result = await subTrader.agentPlay(recommendations, maxPerTrade, minConfidence);
+      const result = await subTrader.agentPlay(recommendations, maxPerTrade, minConfidence, maxPositions);
       await subTrader.save();
       return result;
     }
@@ -773,6 +806,9 @@ export class PaperTrader {
       if (conf < minConfidence) continue;
 
       if (rec.action === 'buy' && this.state.cash > 0) {
+        // Honour maxPositions: skip if already holding maxPositions distinct tokens
+        if (this.state.holdings.length >= maxPositions) continue;
+
         // Determine position size proportional to confidence
         const alloc = Math.min(maxPerTrade, this.state.cash * conf);
         if (alloc <= 0) continue;
@@ -968,6 +1004,69 @@ export class PaperTrader {
     this.tokenCache.clear();
     this.reset();
     return this.load();
+  }
+
+  /**
+   * Run a multi-profile comparison (RL-style training).
+   * Creates one PaperTrader per profile with the specified difficulty,
+   * runs agentPlay on each with the same signal data, persists all,
+   * then returns a ranked comparison sorted by PnL descending.
+   *
+   * @param profiles Array of profile configs with name and difficulty
+   * @param opts Optional settings: dataDir, maxPerTrade, minConfidence
+   * @returns Ranked array of ProfileResult sorted by PnL descending
+   */
+  static async runComparison(
+    profiles: Array<{ name: string; difficulty: Difficulty; maxPositions?: number }>,
+    opts?: { dataDir?: string; maxPerTrade?: number; minConfidence?: number },
+  ): Promise<ProfileResult[]> {
+    const dataDir = opts?.dataDir ?? loadConfig().dataDir;
+    const maxPerTrade = opts?.maxPerTrade ?? 1000;
+    const minConfidence = opts?.minConfidence ?? 0.3;
+
+    // Get signal data from an ephemeral trader
+    const signalTrader = new PaperTrader({ dataDir });
+    const recommendations = await signalTrader.getSignalRecommendations();
+
+    const results: ProfileResult[] = [];
+
+    for (const profile of profiles) {
+      const trader = new PaperTrader({
+        dataDir,
+        profileName: profile.name,
+        difficulty: profile.difficulty,
+      });
+
+      // Reset to ensure clean state
+      trader.reset();
+
+      await trader.agentPlay(
+        recommendations,
+        maxPerTrade,
+        minConfidence,
+        profile.maxPositions ?? 5,
+      );
+
+      await trader.save();
+
+      const report = await trader.getReport();
+
+      results.push({
+        profileName: profile.name,
+        difficulty: profile.difficulty,
+        startBalance: trader.startBalance,
+        currentBalance: report.totalEquity,
+        totalPnl: report.totalReturn,
+        winRate: report.winRate,
+        tradeCount: report.totalTrades,
+        sharpeLike: report.sharpeRatio,
+      });
+    }
+
+    // Sort by PnL descending
+    results.sort((a, b) => b.totalPnl - a.totalPnl);
+
+    return results;
   }
 }
 
