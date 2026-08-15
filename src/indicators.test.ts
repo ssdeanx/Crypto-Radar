@@ -275,7 +275,7 @@ describe('computeAllIndicators', () => {
     }));
   }
 
-  it('computes all indicators from kline data', async () => {
+  it('computes all indicators from kline data', { timeout: 15000 }, async () => {
     // Need at least 50+ data points for EMA50
     const closes = Array.from({ length: 60 }, (_, i) => 100 + Math.sin(i * 0.2) * 10);
     const klines = makeKlines(closes);

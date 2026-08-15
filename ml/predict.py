@@ -29,6 +29,7 @@ import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -88,7 +89,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # ── Helpers ──
 
 
-def _load_norm_stats(path: str | None) -> dict | None:
+def _load_norm_stats(path: str | None) -> dict[str, Any] | None:
     """Load normalization statistics JSON; return None if unavailable."""
     if path is None:
         return None
@@ -100,7 +101,8 @@ def _load_norm_stats(path: str | None) -> dict | None:
         return None
     try:
         with open(p) as f:
-            return json.load(f)
+            res: dict[str, Any] = json.load(f)
+            return res
     except Exception as e:
         logger.warning("Failed to parse norm-stats: %s — falling back to fillna(0)", e)
         return None
@@ -108,7 +110,7 @@ def _load_norm_stats(path: str | None) -> dict | None:
 
 def _build_fill_values(
     feature_cols: list[str],
-    norm_stats: dict | None,
+    norm_stats: dict[str, Any] | None,
 ) -> dict[str, float]:
     """
     Build per-column fill values for NaN cells.
@@ -122,10 +124,10 @@ def _build_fill_values(
     if norm_stats is None:
         return {}  # caller will use fillna(0)
 
-    medians: dict = norm_stats.get("medians", {})
-    means: dict = norm_stats.get("means", {})
-    stds: dict = norm_stats.get("stds", {})
-    feature_names: list = norm_stats.get("featureNames", [])
+    medians: dict[str, Any] = norm_stats.get("medians", {})
+    means: dict[str, Any] = norm_stats.get("means", {})
+    stds: dict[str, Any] = norm_stats.get("stds", {})
+    feature_names: list[Any] = norm_stats.get("featureNames", [])
 
     known = set(feature_names)
     fills: dict[str, float] = {}
@@ -141,7 +143,7 @@ def _build_fill_values(
     return fills
 
 
-def load_model(model_path: str, model_type: str = "auto"):
+def load_model(model_path: str, model_type: str = "auto") -> Any:
     """Load a CatBoost model (.cbm or .joblib).
 
     Args:
@@ -279,7 +281,7 @@ def predict(args: argparse.Namespace) -> None:
         logger.error("Model has no classes_ attribute — was it trained?")
         print(json.dumps({"error": "Model has no classes_ — model may not be trained"}))
         sys.exit(1)
-    classes: list = list(model.classes_)
+    classes: list[Any] = list(model.classes_)
 
     # ── Pre-compute class→index mapping (avoids np.where per row) ──
     class_to_idx: dict[int, int] = {int(cls): idx for idx, cls in enumerate(classes)}
@@ -318,7 +320,7 @@ def predict(args: argparse.Namespace) -> None:
             shap_values = None
 
     # ── Build results ──
-    results: list[dict] = []
+    results: list[dict[str, Any]] = []
     for i in range(len(predictions)):
         pred_class = int(predictions[i])
 
@@ -333,7 +335,7 @@ def predict(args: argparse.Namespace) -> None:
         }
         ordered_probs = [probs_map.get(c, 0.0) for c in [-1, 0, 1]]
 
-        result: dict = {
+        result: dict[str, Any] = {
             "direction": pred_class,
             "confidence": round(confidence, 4),
             "probs": ordered_probs,

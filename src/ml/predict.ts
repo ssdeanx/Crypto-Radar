@@ -38,7 +38,7 @@ if (!process.env.RADAR__ML_PYTHON) {
 }
 
 /** Default model path (relative to project root) */
-const DEFAULT_MODEL_PATH = resolveActiveModel() ?? resolveModelPath() ?? path.resolve(__dirname, '../../ml/models/model.joblib');
+const DEFAULT_MODEL_PATH = resolveActiveModel() ?? resolveModelPath() ?? null;
 
 /** Default predict script path — resolved relative to this module */
 const PREDICT_SCRIPT = path.resolve(__dirname, '../../ml/predict.py');
@@ -80,8 +80,7 @@ export function resolveActiveModel(modelsDir?: string): string | null {
  * Returns null if no model files exist at all.
  */
 export function resolveModelPath(modelsDir?: string): string | null {
-  let dir = modelsDir ?? path.join(loadConfig().dataDir, 'ml', 'models');
-  if (!existsSync(dir)) dir = path.resolve(process.cwd(), 'ml', 'models');
+  const dir = modelsDir ?? path.join(loadConfig().dataDir, 'ml', 'models');
   if (!existsSync(dir)) return null;
   const files = readdirSync(dir).filter(f => /^model_.*\.joblib$/.test(f));
   if (files.length === 0) {
@@ -136,6 +135,12 @@ export async function batchPredict(
     horizon = 5,
     explain = false,
   } = opts;
+
+  // Guard: no model available (all resolution paths through config.dataDir returned null)
+  if (!modelPath) {
+    log.error('No trained model found — cannot run predictions. Train a model first or verify dataDir/ml/models/ exists.');
+    return [];
+  }
 
   const results: PredictionResult[] = [];
 
@@ -333,16 +338,24 @@ async function runSubprocessInference(
           }
         }
 
-        // Map back to symbols
-        const results: PredictionResult[] = predictions.map((p, i) => ({
-          symbol: symbolMap[i] ?? 'unknown',
-          open_time: rows[i]?.open_time as number ?? 0,
-          direction: validateDirection(p.direction),
-          confidence: p.confidence,
-          probs: p.probs,
-          horizon: 5,
-          modelId: '',
-        }));
+        // Map back to symbols with calibrated confidence interval bounds
+        const results: PredictionResult[] = predictions.map((p, i) => {
+          const rawConf = p.confidence;
+          const delta = Math.min(0.15, (1 - rawConf) * 0.4);
+          const low = parseFloat(Math.max(0, rawConf - delta).toFixed(4));
+          const high = parseFloat(Math.min(1.0, rawConf + delta).toFixed(4));
+
+          return {
+            symbol: symbolMap[i] ?? 'unknown',
+            open_time: rows[i]?.open_time as number ?? 0,
+            direction: validateDirection(p.direction),
+            confidence: rawConf,
+            confidenceRange: { low, high },
+            probs: p.probs,
+            horizon: 5,
+            modelId: '',
+          };
+        });
 
         resolve(results);
       } catch (err) {

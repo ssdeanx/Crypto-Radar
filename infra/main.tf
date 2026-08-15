@@ -3,8 +3,16 @@ terraform {
   required_providers {
     google = {
       source  = "hashicorp/google"
-      version = "~> 4.0"
+      version = "~> 6.0"
     }
+  }
+  backend "gcs" {
+    # Usage:
+    #   terraform init -backend-config="bucket=crypto-radar-tfstate-PROJECT_ID"
+    #
+    # The bucket must be created manually before terraform init:
+    #   gcloud storage buckets create gs://crypto-radar-tfstate-PROJECT_ID \
+    #     --project=PROJECT_ID --location=us-central1
   }
 }
 
@@ -79,6 +87,13 @@ resource "google_cloud_tasks_queue" "model_retrain" {
   }
 }
 
+# ── Service Account ──
+
+resource "google_service_account" "crypto_radar_sa" {
+  account_id   = "crypto-radar-sa"
+  display_name = "Crypto Radar Service Account"
+}
+
 # ── Storage Bucket for SQLite Backups ──
 
 resource "google_storage_bucket" "state_bucket" {
@@ -96,6 +111,87 @@ resource "google_storage_bucket" "state_bucket" {
     }
     condition {
       num_newer_versions = 3
+    }
+  }
+}
+
+# ── Secret Manager Secrets ──
+
+resource "google_secret_manager_secret" "cron_secret" {
+  secret_id = "cron-secret"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "jwt_secret" {
+  secret_id = "radar-jwt-secret"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "api_key" {
+  secret_id = "radar-api-key"
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret" "ai_api_key" {
+  secret_id = "radar-ai-api-key"
+  replication {
+    auto {}
+  }
+}
+
+# ── Artifact Registry ──
+
+resource "google_artifact_registry_repository" "repo" {
+  location      = var.region
+  repository_id = "crypto-radar-repo"
+  description   = "Docker repository for Crypto Radar service"
+  format        = "DOCKER"
+}
+
+# ── Cloud Scheduler Jobs ──
+
+resource "google_cloud_scheduler_job" "hourly_scan" {
+  name        = "crypto-radar-hourly-scan"
+  description = "Trigger hourly Crypto Radar market scan"
+  schedule    = "0 * * * *"
+  time_zone   = "UTC"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://${var.region}-${var.project_id}.cloudfunctions.net/crypto-radar/api/cron/scan"
+
+    headers = {
+      "Content-Type" = "application/json"
+    }
+
+    oidc_token {
+      service_account_email = google_service_account.crypto_radar_sa.email
+    }
+  }
+}
+
+resource "google_cloud_scheduler_job" "weekly_retrain" {
+  name        = "crypto-radar-weekly-retrain"
+  description = "Trigger weekly ML model retraining and GCS checkpoint sync"
+  schedule    = "0 0 * * 0"
+  time_zone   = "UTC"
+
+  http_target {
+    http_method = "POST"
+    uri         = "https://${var.region}-${var.project_id}.cloudfunctions.net/crypto-radar/api/cron/retrain"
+
+    headers = {
+      "Content-Type" = "application/json"
+    }
+
+    oidc_token {
+      service_account_email = google_service_account.crypto_radar_sa.email
     }
   }
 }

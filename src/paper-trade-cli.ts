@@ -412,6 +412,28 @@ export function createPaperTradeCommand(): Command {
       logger.stdout('');
     });
 
+  // ── export-dataset command ──
+  cmd
+    .command('export-dataset')
+    .description('Export paper trading telemetry into an AI training dataset')
+    .option('--profile <name>', 'Profile name to export from (default: active profile)')
+    .option('--out <path>', 'Output file path (e.g. data/ml/paper-dataset.jsonl)')
+    .option('--format <fmt>', 'Dataset format: jsonl or csv', 'jsonl')
+    .action(async (opts) => {
+      try {
+        const trader = await loadPaperTrader(opts.profile);
+        const format = (opts.format === 'csv' ? 'csv' : 'jsonl') as 'jsonl' | 'csv';
+        const defaultOut = `./data/ml/paper-telemetry-${trader.trades.length > 0 ? opts.profile ?? 'active' : 'empty'}.${format}`;
+        const targetOut = opts.out ?? defaultOut;
+        const result = trader.exportDataset(targetOut, format);
+        const lineCount = result.trim() ? result.trim().split('\n').length : 0;
+        logger.stdout(`\n📊 Exported ${lineCount} dataset rows to: ${targetOut}`);
+      } catch (err) {
+        logger.error('[ERROR] Export failed:', { message: err instanceof Error ? err.message : String(err) });
+        process.exit(1);
+      }
+    });
+
   // ── profile command group ──
   const profileCmd = cmd.command('profile')
     .description('Manage paper trading profiles');

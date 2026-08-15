@@ -1,13 +1,10 @@
-# Ultragoal Brief: Production-Readiness Scaffolding for GCP (100% Isolated Strategy)
+# Institutional Signal Quality, ML Precision & Visual Output Brief
 
-## Objective
-Build out PostgreSQL storage and Cloud Run production readiness configs inside a completely separate `gcp/` directory, leaving 100% of your existing local files (code, package.json, scripts) completely untouched.
+This Ultragoal executes comprehensive quality upgrades across Trading Strategies, Machine Learning Model Predictions, and Report/Visual Display Outputs.
 
-## Key Requirements & Boundaries
-1. **Zero Modifications to Local Files**: Do not edit *any* files in `src/`, `scripts/`, `package.json`, or `tsconfig.json`. Keep the local development pipeline completely unchanged.
-2. **Standalone Production Folder**: Build all PostgreSQL storage drivers, authentication hook wrappers, and container configurations inside a new standalone `gcp/` folder (e.g., `gcp/postgres-store.ts`, `gcp/server.ts`, `gcp/package.json`, `gcp/Dockerfile`).
-3. **Separate package.json**: To prevent modifying the local `package.json`, we will define a separate `gcp/package.json` that contains the production-only dependencies (like `pg` for Postgres). This dependency will only be resolved during the container build process, keeping your local dev directory completely free of database client libraries.
-4. **Retain ML subprocess**: Keep the current subprocess architecture for predictions. In production, the `gcp/Dockerfile` will package Python to support the subprocess without adding Node-level npm modules.
-
-## Constraints
-* The local SQLite database, CLI commands, and test suites must continue to run exactly as they do today.
+## Objectives
+1. **Institutional Signal Engine (`src/analysis/strategies.ts` & `src/analysis/engine.ts`)**: Enhance momentum, mean-reversion, and trend-following strategies with ADX trend-strength filtering, RSI divergence detection, volume profile POC confirmation, and multi-timeframe agreement weighting.
+2. **High-Precision ML Inference & Calibration (`ml/model.py` & `src/ml/predict.ts`)**: Upgrade CatBoost classification with probability calibration, dynamic volatility-adjusted confidence bounds, and feature importance attribution.
+3. **Visual Output & Rich Terminal Formatting (`src/display.ts` & `src/reports/`)**: Elevate Markdown, ASCII chart, and terminal table reports with colorized direction indicators, risk management parameters (SL/TP/R:R), and pattern recognition highlights.
+4. **Backtesting & Accuracy Analytics (`src/backtest.ts`)**: Quantify strategy accuracy, Sharpe ratio, Sortino ratio, max drawdown, and expectancy across historical market data.
+5. **Full System Verification**: Verify end-to-end pipeline with `npm run validate` and `npm run backtest`.

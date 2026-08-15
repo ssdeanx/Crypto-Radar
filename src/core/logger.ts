@@ -39,8 +39,18 @@ const LEVEL_LABEL: Record<number, string> = {
   60: 'FATAL',
 };
 
+const GCP_SEVERITY: Record<LogLevel, string> = {
+  trace: 'DEBUG',
+  debug: 'DEBUG',
+  info: 'INFO',
+  warn: 'WARNING',
+  error: 'ERROR',
+  fatal: 'CRITICAL',
+};
+
 export interface LogEntry {
   level: number;
+  severity?: string;
   time: string;
   msg: string;
   [key: string]: unknown;
@@ -52,7 +62,10 @@ class Logger {
   private minLevel: number = 30; // info default
   private outputStream: 'stdout' | 'file' = 'stdout';
   private logFilePath = '';
-  private format: LogFormat = 'text'; // text for terminal, json for files
+  private format: LogFormat = process.env['NODE_ENV'] === 'production' || process.env['LOG_FORMAT'] === 'json' ? 'json' : 'text';
+  private logBuffer: string[] = [];
+  private logFlushScheduled = false;
+  private flushRegistered = false;
 
   configure(opts: { level?: LogLevel; logDir?: string; logFile?: string; format?: LogFormat }): void {
     if (opts.level) this.minLevel = LEVEL_NUM[opts.level];
@@ -63,6 +76,29 @@ class Logger {
       if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
     }
     if (opts.format) this.format = opts.format;
+
+    if (!this.flushRegistered) {
+      this.flushRegistered = true;
+      process.on('beforeExit', () => this.flushBuffer());
+    }
+  }
+
+  private scheduleFlush(): void {
+    if (this.logFlushScheduled) return;
+    this.logFlushScheduled = true;
+    queueMicrotask(() => {
+      this.flushBuffer();
+    });
+  }
+
+  private flushBuffer(): void {
+    this.logFlushScheduled = false;
+    if (this.logBuffer.length === 0) return;
+    const batch = this.logBuffer.join('\n') + '\n';
+    this.logBuffer = [];
+    try {
+      appendFileSync(this.logFilePath, batch, 'utf-8');
+    } catch { /* best effort */ }
   }
 
   private write(level: LogLevel, msg: string, extra?: Record<string, unknown>): void {
@@ -71,6 +107,7 @@ class Logger {
 
     const entry: LogEntry = {
       level: num,
+      severity: GCP_SEVERITY[level],
       time: new Date().toISOString(),
       msg,
       ...extra,
@@ -81,9 +118,10 @@ class Logger {
       : JSON.stringify(entry);
 
     if (this.outputStream === 'file') {
-      try {
-        appendFileSync(this.logFilePath, line + '\n');
-      } catch { /* best effort */ }
+      this.logBuffer.push(line);
+      this.scheduleFlush();
+      // Force immediate flush for fatal
+      if (num >= 60) this.flushBuffer();
     } else {
       process.stderr.write(line + '\n');
     }

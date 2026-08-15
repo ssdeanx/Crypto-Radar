@@ -4,6 +4,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { loadConfig, resetConfig, writeDefaultConfig, isCloudMode } from './config.js';
+import { RadarConfigSchema } from './config.schema.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { mkdtempSync } from 'node:fs';
@@ -116,6 +117,26 @@ describe('Configuration', () => {
       process.env['GOOGLE_APPLICATION_CREDENTIALS'] = '/path/to/key.json';
       expect(isCloudMode()).toBe(true);
     });
+  });
+});
+
+describe('Config Schema Validation', () => {
+  it('passes valid default config', () => {
+    // Load the real default config via the loadConfig function
+    const config = loadConfig();
+    // Enforce type safety — ValidatedConfig must match RadarConfig at runtime
+    const result = RadarConfigSchema.safeParse(config);
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects bad fetchTimeoutMs = -5', () => {
+    const config = loadConfig();
+    config.fetchTimeoutMs = -5;
+    const result = RadarConfigSchema.safeParse(config);
+    expect(result.success).toBe(false);
+    // Verify the error message mentions fetchTimeoutMs
+    const msgs = result.error!.issues.map(i => i.path.join('.') + ': ' + i.message);
+    expect(msgs.some(m => m.includes('fetchTimeoutMs'))).toBe(true);
   });
 });
 

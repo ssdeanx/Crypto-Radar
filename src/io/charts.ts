@@ -201,14 +201,17 @@ function renderSRSummary(
   try {
     const sr = findSupportResistance(symbol, klines, { maxLevels: 3 });
     if (!sr.nearestSupport && !sr.nearestResistance) return '';
+    const currentClose = closes.length > 0 ? closes[closes.length - 1] ?? 0 : 0;
     const parts: string[] = [];
     const support: PriceLevel | null = sr.nearestSupport;
     const resistance: PriceLevel | null = sr.nearestResistance;
     if (support) {
-      parts.push(`${pc.green('▲')} ${support.label} ${pc.green(formatPriceCompact(support.price))}`);
+      const distPct = currentClose > 0 ? ((support.price - currentClose) / currentClose * 100).toFixed(1) : '';
+      parts.push(`${pc.green('▲')} ${support.label} ${pc.green(formatPriceCompact(support.price))}${distPct ? ` (${distPct}%)` : ''}`);
     }
     if (resistance) {
-      parts.push(`${pc.red('▼')} ${resistance.label} ${pc.red(formatPriceCompact(resistance.price))}`);
+      const distPct = currentClose > 0 ? ((resistance.price - currentClose) / currentClose * 100).toFixed(1) : '';
+      parts.push(`${pc.red('▼')} ${resistance.label} ${pc.red(formatPriceCompact(resistance.price))}${distPct ? ` (${distPct}%)` : ''}`);
     }
     if (parts.length > 0) {
       return `SR  ${parts.join('  │  ')}`;

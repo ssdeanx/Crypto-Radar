@@ -22,17 +22,22 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install Node dependencies
         run: npm ci
 
-      - name: TypeScript build
-        run: npm run build
+      - name: Setup Python ML environment
+        run: bash scripts/setup-ml-env.sh
 
-      - name: Run tests
-        run: npm test
-
-      - name: ESLint
-        run: npm run lint
+      - name: Run full validation suite (Build, Lint, Vitest, Mypy, Ruff)
+        run: npm run validate
 
       - name: Check dist output
         run: |

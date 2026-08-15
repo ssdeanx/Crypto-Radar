@@ -130,7 +130,7 @@ export class TrendFollowingStrategy implements SignalStrategy {
     }
 
     // ── 3. Price position relative to EMAs ──
-    if (ema50 != null) {
+    if (ema50 != null && ema50 > 0) {
       const distFromEma50 = ((currentPrice - ema50) / ema50) * 100;
       indicators.priceVsEma50 = distFromEma50;
 

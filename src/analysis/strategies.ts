@@ -29,6 +29,30 @@ export interface AggregatedSignal {
   /** 95% confidence interval range */
   confidenceRange?: { low: number; high: number };
   compositeReason?: string;
+
+  // ── Advanced Pattern & Breakout Signal Integrations ──
+  /** Detected candlestick chart patterns */
+  patterns?: Array<{ type: string; direction: string; confidence: number; description: string }>;
+  /** Nearest support and resistance price levels */
+  supportResistance?: {
+    nearestSupport: number | null;
+    nearestResistance: number | null;
+    upsideTargetPct: number | null;
+    downsideRiskPct: number | null;
+  };
+  /** Volume Profile Point of Control (POC), VAH, VAL */
+  volumeProfile?: {
+    poc: number;
+    vah: number;
+    val: number;
+  };
+  /** Risk management calculations: ATR stop-loss, take-profit, and risk-to-reward ratio */
+  riskManagement?: {
+    stopLossPrice: number;
+    takeProfitPrice: number;
+    riskRewardRatio: number;
+    kellyPositionSize: number;
+  };
 }
 
 /** Context passed to each strategy's evaluate method. */

@@ -21,14 +21,20 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
       return reply.status(500).send({ error: 'CRON_SECRET environment variable is not configured.' });
     }
 
+    const apiKeyEnv = process.env['RADAR__API_KEY'];
+    const apiKeyHeader = request.headers['x-api-key'] as string | undefined;
     const authHeader = (request.headers['x-cron-secret'] ?? request.headers['authorization']) as string | undefined;
-    if (!authHeader) {
-      return reply.status(401).send({ error: 'Unauthorized: Missing cron secret or authorization token.' });
+
+    const isValidApiKey = Boolean(apiKeyEnv && apiKeyHeader && apiKeyHeader === apiKeyEnv);
+
+    if (!authHeader && !isValidApiKey) {
+      return reply.status(401).send({ error: 'Unauthorized: Missing cron secret or x-api-key header.' });
     }
 
     // Strip "Bearer " prefix if present, then do constant-time compare to prevent timing attacks
-    const rawSecret = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
-    const isValidSecret = (() => {
+    const rawSecret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const isValidCronSecret = (() => {
+      if (!rawSecret) return false;
       try {
         const a = Buffer.from(rawSecret);
         const b = Buffer.from(cronSecret);
@@ -37,8 +43,8 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
         return false;
       }
     })();
-    if (!isValidSecret) {
-      return reply.status(403).send({ error: 'Forbidden: Invalid cron secret.' });
+    if (!isValidCronSecret && !isValidApiKey) {
+      return reply.status(403).send({ error: 'Forbidden: Invalid cron secret or x-api-key.' });
     }
 
     log.info('Secure cron trigger validated. Starting hourly scan cycle...');
@@ -115,7 +121,7 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
           }
         }
 
-        const predictions = await batchPredict(app.store, symbolsToScan, '1h', {
+        const predictions = await batchPredict(app.store, symbolsToScan.map(s => s.endsWith('USDT') ? s : s + 'USDT'), '1h', {
           modelPath,
           normalizationStats: normalizationStats as import('../../../ml/types.js').NormalizationStats | undefined,
           minConfidence: 0,
@@ -123,21 +129,39 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
         });
 
         if (predictions.length > 0) {
-          // Enrich with Gemini reasoning
+          // Enrich with Gemini reasoning — single batch API call instead of N
           try {
-            const { generateGeminiReasoning } = await import('../../../analysis/gemini.js');
+            const { batchGenerateReasoning } = await import('../../../analysis/gemini.js');
+
+            // Pre-fetch ticker data and klines for every prediction
+            const enriched: Array<{
+              symbol: string;
+              direction: -1 | 0 | 1;
+              confidence: number;
+              ticker: { lastPrice: number; priceChangePercent: number };
+              signal: { compositeScore: number; regime?: string | null };
+              klines: import('../../../types.js').KlineRow[];
+            }> = [];
+
             for (const pred of predictions) {
               const ticker = scanResult?.tickers?.find(t => t.symbol === pred.symbol);
-              const klines = await app.store.getKlines(pred.symbol, '1h', { limit: 10, order: 'desc' });
               if (ticker) {
-                const reasoning = await generateGeminiReasoning(
-                  pred.symbol,
+                const klines = await app.store.getKlines(pred.symbol, '1h', { limit: 10, order: 'desc' });
+                enriched.push({
+                  symbol: pred.symbol,
+                  direction: pred.direction,
+                  confidence: pred.confidence,
+                  ticker: { lastPrice: ticker.lastPrice, priceChangePercent: ticker.priceChangePercent },
+                  signal: { compositeScore: ticker.compositeScore ?? 50, regime: ticker.regime },
                   klines,
-                  { lastPrice: ticker.lastPrice, priceChangePercent: ticker.priceChangePercent },
-                  { compositeScore: ticker.compositeScore ?? 50, regime: ticker.regime }
-                );
-                pred.reasoning = reasoning;
+                });
               }
+            }
+
+            // Single batch LLM call for all predictions
+            const reasoningMap = await batchGenerateReasoning(enriched);
+            for (const pred of predictions) {
+              pred.reasoning = reasoningMap.get(pred.symbol) ?? '';
             }
           } catch (geminiErr) {
             log.warn('Failed to generate Gemini reasoning during prediction enrichment', { error: String(geminiErr) });
@@ -175,6 +199,79 @@ export const cronRoutes: FastifyPluginAsync = async (app) => {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       log.error('Cron scan cycle failed with error', { error: errMsg, stack: err instanceof Error ? err.stack : undefined });
+      return reply.status(500).send({
+        status: 'error',
+        error: errMsg,
+      });
+    }
+  });
+
+  // Automated ML Retraining Endpoint — triggered by Cloud Scheduler or drift detector
+  app.post('/api/cron/retrain', { config: { rateLimit: false } }, async (request, reply) => {
+    const cronSecret = process.env.CRON_SECRET;
+    const apiKeyEnv = process.env['RADAR__API_KEY'];
+    const apiKeyHeader = request.headers['x-api-key'] as string | undefined;
+    const authHeader = (request.headers['x-cron-secret'] ?? request.headers['authorization']) as string | undefined;
+
+    const isValidApiKey = Boolean(apiKeyEnv && apiKeyHeader && apiKeyHeader === apiKeyEnv);
+    const rawSecret = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader;
+    const isValidCronSecret = (() => {
+      if (!rawSecret || !cronSecret) return false;
+      try {
+        const a = Buffer.from(rawSecret);
+        const b = Buffer.from(cronSecret);
+        return a.length === b.length && timingSafeEqual(a, b);
+      } catch {
+        return false;
+      }
+    })();
+
+    if (!isValidCronSecret && !isValidApiKey) {
+      return reply.status(403).send({ error: 'Forbidden: Invalid cron secret or x-api-key.' });
+    }
+
+    log.info('Starting automated ML model retraining cycle...');
+    const startTime = Date.now();
+
+    try {
+      // 1. Build training dataset
+      const { runBuildDataset } = await import('../../../ml/build-dataset-cli.js');
+      await runBuildDataset(['--symbols', 'BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT', '--horizon', '5', '--limit', '500']);
+
+      // 2. Train CatBoost model via Python subprocess
+      const { spawn } = await import('node:child_process');
+      const python = process.env.RADAR__ML_PYTHON ?? 'python3';
+      const datasetPath = path.resolve(process.cwd(), 'data/ml/dataset_train.jsonl');
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn(python, [
+          'ml/train.py',
+          '--data', datasetPath,
+          '--output', 'ml/models',
+          '--class-weight', 'custom',
+        ], { stdio: ['ignore', 'pipe', 'inherit'] });
+
+        proc.on('close', (code) => {
+          if (code === 0) resolve();
+          else reject(new Error(`Training process exited with code ${code}`));
+        });
+      });
+
+      // 3. Sync trained model & normalization stats to GCS storage bucket
+      await app.store.syncModelsToBucket();
+
+      const durationMs = Date.now() - startTime;
+      log.info(`Automated ML model retraining completed in ${durationMs}ms`);
+
+      return {
+        status: 'success',
+        durationMs,
+        datasetPath,
+        modelDir: 'ml/models',
+      };
+    } catch (retrainErr) {
+      const errMsg = retrainErr instanceof Error ? retrainErr.message : String(retrainErr);
+      log.error('Automated ML model retraining failed', { error: errMsg });
       return reply.status(500).send({
         status: 'error',
         error: errMsg,

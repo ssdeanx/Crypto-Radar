@@ -91,6 +91,17 @@ describe('CSV output', () => {
     const csvCols = csv.split(',').length;
     expect(csvCols).toBeLessThanOrEqual(headerCols);
   });
+
+  it('escapes CSV-injection characters', () => {
+    const ticker = makeTicker({ alerts: '=HYPERLINK("http://evil")' });
+    const csv = toCSV(ticker);
+    const cols = csv.split(',');
+    const alertsCol = cols.find(c => c.includes('HYPERLINK'));
+    expect(alertsCol).toBeDefined();
+    // Field is double-quoted: "'\t=HYPERLINK(...)" — first char is ", second is ' (the escape)
+    expect(alertsCol![0]).toBe('"');
+    expect(alertsCol![1]).toBe("'");
+  });
 });
 
 describe('JSON line output', () => {

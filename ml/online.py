@@ -35,10 +35,10 @@ _MODEL_VERSION: int = 1
 
 # Lazy river import — gives a clear error if river is not installed
 # rather than crashing at module import time.
-_river = None
+_river: dict[str, Any] | None = None
 
 
-def _get_river():
+def _get_river() -> dict[str, Any]:
     global _river
     if _river is None:
         try:
@@ -52,7 +52,6 @@ def _get_river():
                 "river is not installed. Run: npm run setup:ml"
             )
     return _river
-
 
 
 class OnlineModel:
@@ -123,7 +122,8 @@ class OnlineModel:
     def predict(self, features: dict[str, float]) -> int | None:
         """Return the predicted class label."""
         X = self.scaler.transform_one(features)
-        return self.model.predict_one(X)
+        res = self.model.predict_one(X)
+        return int(res) if res is not None else None
 
     def get_metrics(self) -> dict[str, Any]:
         """Return streaming performance metrics."""

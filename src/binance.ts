@@ -74,6 +74,16 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
+/**
+ * Circuit-aware fetch wrapper. Routes individual fetch calls through the
+ * circuit breaker so repeated failures trip the breaker and cause fast-fail.
+ * Use this directly when you don't need fetchWithRetry's retry logic,
+ * or as a building block inside retry loops.
+ */
+export async function circuitAwareFetch(url: string, options?: RequestInit & { agent: http.Agent | https.Agent }): Promise<Response> {
+  return binanceBreaker.call(() => fetch(url, options as RequestInit));
+}
+
 /** Get unique USDT pairs for all tracked tokens */
 function getPairs(): string[] {
   const seen = new Set<string>();
@@ -197,9 +207,11 @@ export async function fetchTickers7d(pairs: string[]): Promise<Map<string, Ticke
  * @returns The Binance ticker data
  */
 export async function fetchTicker(pair: string): Promise<BinanceTicker> {
-  const url = `${BASE_URL}/api/v3/ticker/24hr?symbol=${pair}`;
-  const res = await fetchWithRetry(url);
-  return (await res.json()) as BinanceTicker;
+  return binanceBreaker.call(async () => {
+    const url = `${BASE_URL}/api/v3/ticker/24hr?symbol=${pair}`;
+    const res = await fetchWithRetry(url);
+    return (await res.json()) as BinanceTicker;
+  });
 }
 
 /**
@@ -246,13 +258,15 @@ export async function fetchKlines(
 export async function fetchExchangeInfo(): Promise<{
   symbols: Array<{ symbol: string; status: string; baseAsset: string; quoteAsset: string }>;
 }> {
-  const url = `${BASE_URL}/api/v3/exchangeInfo`;
-  const res = await fetchWithRetry(url);
-  const json: unknown = await res.json();
-  const data = json as {
-    symbols: Array<{ symbol: string; status: string; baseAsset: string; quoteAsset: string }>;
-  };
-  return data;
+  return binanceBreaker.call(async () => {
+    const url = `${BASE_URL}/api/v3/exchangeInfo`;
+    const res = await fetchWithRetry(url);
+    const json: unknown = await res.json();
+    const data = json as {
+      symbols: Array<{ symbol: string; status: string; baseAsset: string; quoteAsset: string }>;
+    };
+    return data;
+  });
 }
 
 /**
@@ -265,11 +279,16 @@ export async function fetchDepth(pair: string, limit = 20): Promise<{
   bids: [string, string][];
   asks: [string, string][];
 }> {
-  const url = `${BASE_URL}/api/v3/depth?symbol=${pair}&limit=${limit}`;
-  const res = await fetchWithRetry(url);
-  const json: unknown = await res.json();
-  const data = json as { bids: [string, string][]; asks: [string, string][] };
-  return data;
+  return binanceBreaker.call(async () => {
+    const url = `${BASE_URL}/api/v3/depth?symbol=${pair}&limit=${limit}`;
+    const res = await fetchWithRetry(url);
+    const json: unknown = await res.json();
+    const data = json as { bids: [string, string][]; asks: [string, string][] };
+    return data;
+  });
 }
 
 export type { BinanceTicker } from './types.js';
+
+/** Exported for testing — call .reset() between test groups to avoid order-dependent failures */
+export { binanceBreaker };

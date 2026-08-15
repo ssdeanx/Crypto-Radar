@@ -32,10 +32,11 @@ const mockState = vi.hoisted(() => {
     const loadFn = vi.fn<() => Promise<boolean>>().mockResolvedValue(true);
     const resetFn = vi.fn();
     const getPriceFn = vi.fn<() => Promise<number | null>>();
+    const exportDatasetFn = vi.fn().mockReturnValue('{"tradeId":"PT-1","symbol":"SOL"}\n');
 
     Object.assign(fns, {
       buyFn, sellFn, getPortfolioFn, getReportFn,
-      getSignalRecommendationsFn, agentPlayFn, saveFn, loadFn, resetFn, getPriceFn,
+      getSignalRecommendationsFn, agentPlayFn, saveFn, loadFn, resetFn, getPriceFn, exportDatasetFn,
     });
 
     const t: Record<string, any> = {
@@ -55,6 +56,7 @@ const mockState = vi.hoisted(() => {
       load: loadFn,
       reset: resetFn,
       getPrice: getPriceFn,
+      exportDataset: exportDatasetFn,
     };
 
     Object.keys(t).forEach(k => { trader[k] = t[k]; });
@@ -851,6 +853,28 @@ describe('config command', () => {
     expect(output).toContain('5500.00');
     expect(output).toContain('3');
     expect(output).toContain('1');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
+// export-dataset command
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('export-dataset command', () => {
+  beforeEach(() => resetMocks());
+
+  it('exports dataset and logs output file path', async () => {
+    const { output, exitCode } = await runCommand(['export-dataset', '--out', 'test-dataset.jsonl', '--format', 'jsonl']);
+    expect(exitCode).toBe(0);
+    expect(fns.exportDatasetFn).toHaveBeenCalledWith('test-dataset.jsonl', 'jsonl');
+    expect(output).toContain('Exported 1 dataset rows to: test-dataset.jsonl');
+  });
+
+  it('handles export errors gracefully and exits with code 1', async () => {
+    fns.exportDatasetFn.mockImplementation(() => { throw new Error('Write permission denied'); });
+    const { output, exitCode } = await runCommand(['export-dataset']);
+    expect(exitCode).toBe(1);
+    expect(output).toContain('Export failed');
   });
 });
 

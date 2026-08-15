@@ -182,7 +182,7 @@ export function computeCorrelationMatrixBulk(
 
   // 4. Standard deviations from diagonal of covariance
   const std = new Float64Array(N);
-  for (let i = 0; i < N; i++) std[i] = Math.sqrt(covMatrix.get(i, i));
+  for (let i = 0; i < N; i++) std[i] = Math.sqrt(Math.max(0, covMatrix.get(i, i)));
 
   // 5. Build correlation matrix: D * Cov * D where D = diag(1/std)
   const matrix: number[][] = [];

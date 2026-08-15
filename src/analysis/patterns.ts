@@ -265,7 +265,7 @@ function detectSpinningTop(c: Kline): DetectedPattern | null {
   const minWick = Math.min(uw, lw);
   if (maxWick > minWick * 4) return null;
 
-  const balance = 1 - Math.abs(uw - lw) / (uw + lw);
+  const balance = (uw + lw) > 0 ? 1 - Math.abs(uw - lw) / (uw + lw) : 1;
   const confidence = clamp(0.5 + balance * 0.4);
 
   return {

@@ -25,6 +25,7 @@ import {
   fetchKlines,
   fetchExchangeInfo,
   fetchDepth,
+  binanceBreaker,
 } from './binance.js';
 
 import { getTokenList } from './tokens.js';
@@ -266,7 +267,10 @@ describe('fetchDepth', () => {
 // ═══════════════════════════════════════════════════════════════════════
 
 describe('Error propagation', () => {
-  beforeEach(() => { globalThis.fetch = ORIGINAL_FETCH; });
+  beforeEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    binanceBreaker.reset();
+  });
 
   it('fetchAllTickers propagates errors', async () => {
     setupFetchError('network error');

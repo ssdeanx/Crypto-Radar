@@ -183,19 +183,29 @@ function validateRow(
 
 // ── SQL Escaping ──────────────────────────────────────────────────────
 
+/** Escape a CSV field value to prevent formula injection (e.g. =, +, -, @). */
+function escapeCsvField(val: string): string {
+  if (val.length === 0) return val;
+  const first = val[0];
+  if (first === '=' || first === '+' || first === '-' || first === '@' || first === '\t') {
+    return "'\t" + val;
+  }
+  return val;
+}
+
 /** Escape a string literal for SQLite (single-quote doubling). */
 function sqlEscape(val: string): string {
   return `'${val.replace(/'/g, "''")}'`;
 }
 
-/** Format a value for SQL INSERT — numbers go raw, strings get quoted. */
+/** Format a value for SQL INSERT — numbers go raw, strings get quoted with CSV-injection protection. */
 function sqlValue(val: string, numeric: boolean): string {
   if (val === '' || val === undefined) return 'NULL';
   if (numeric) {
     const num = Number(val);
     return Number.isFinite(num) ? String(num) : 'NULL';
   }
-  return sqlEscape(val);
+  return sqlEscape(escapeCsvField(val));
 }
 
 // ── SQL Generation ───────────────────────────────────────────────────

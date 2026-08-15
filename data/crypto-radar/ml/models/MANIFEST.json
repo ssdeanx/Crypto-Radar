@@ -1,0 +1,23 @@
+{
+  "active_model": "model_20260717_223000.cbm",
+  "models": [
+    {
+      "path": "model_20260717_223000.cbm",
+      "joblib_path": "model_20260717_223000.joblib",
+      "metrics_path": "metrics_20260717_223000.json",
+      "training_timestamp": "2026-07-17T22:30:00",
+      "accuracy": 0.389,
+      "f1_weighted": 0.369,
+      "f1_macro": 0.354,
+      "features": 5,
+      "horizon": 5,
+      "training_config": {
+        "class_weight": "balanced",
+        "seed": 42,
+        "rows": 420
+      },
+      "is_production": true
+    }
+  ],
+  "retired_models": []
+}

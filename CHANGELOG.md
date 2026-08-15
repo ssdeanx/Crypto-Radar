@@ -7,7 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.7.0] — 2026-07-20
+## [2.9.0] — 2026-08-12
+
+### Added
+
+- **Production ML Dataset Exporter CLI** (`src/ml/build-dataset-cli.ts` & `package.json`):
+  - Created standalone ML dataset assembly CLI querying local historical SQLite store with live Binance REST fallback for missing windows.
+  - Computes 42 technical features per candle with $t+5, 20, 60$ forward return labels and Z-score normalization statistics (`data/ml/norm_stats.json`).
+  - Added `npm run ml:build-dataset` script.
+- **Automated CatBoost Retraining & GCS Sync** (`src/api/fastify/routes/cron.ts` & `src/store/db.ts`):
+  - Built `POST /api/cron/retrain` endpoint with constant-time `x-api-key` / `CRON_SECRET` authentication.
+  - Triggers dataset assembly, CatBoost model training subprocess (`ml/train.py`), model manifest updates (`MANIFEST.json`), and auto-syncs trained model binaries to Google Cloud Storage (`crypto-radar-storage-${PROJECT_ID}`).
+- **RSI & MACD Divergence Strategy Engine** (`src/analysis/divergence.ts` & `src/analysis/engine.ts`):
+  - Created `DivergenceStrategy` to scan for regular bullish (Price LL + RSI HL), regular bearish (Price HH + RSI LH), and MACD histogram momentum confirmation.
+  - Integrated into `StrategyEngine` with rebalanced strategy weights (Momentum 35%, Mean Reversion 20%, Trend Following 30%, Divergence 15%).
+- **Advanced Signal Enrichment & Risk Management** (`src/analysis/engine.ts`):
+  - Enriched `AggregatedSignal` with Candlestick Pattern Recognition (`scanPatterns`), Support & Resistance pivots (`findSupportResistance`), Volume Profile POC & Value Area (`computeVolumeProfile`), ATR-based Stop-Loss, Take-Profit targets, Risk-Reward ratio (R:R), and Kelly Criterion position sizing.
+- **Calibrated ML Confidence Bounds** (`src/ml/predict.ts`):
+  - Added volatility-calibrated 95% confidence interval bounds (`confidenceRange: { low, high }`) for CatBoost predictions.
+- **Rich Visual Terminal Dashboard & ASCII Sparklines** (`src/output.ts`):
+  - Upgraded terminal table output (`toTable`) with ASCII trend sparklines (`▅▇█`, `▄▅▇`, `▅▄▃`, `█▇▅`), direction badges (`🚀BUY 85%`, `🟢BUY 72%`, `💥SELL 88%`, `🔴SELL 64%`, `⚪WAIT`), and inline risk management bounds (`[R:R 2.4|SL $8.62]`).
+- **Cloud Scheduler Retraining Jobs** (`infra/main.tf` & `deploy.sh`):
+  - Configured weekly Cloud Scheduler retraining jobs for Cloud Run deployment.
+
+### Fixed
+
+- **Price Formatting**: Fixed duplicate dollar sign output (`$$8.62` $\rightarrow$ `$8.62`) in stop-loss visual terminal tags.
+
+---
+
+## [2.8.1] — 2026-07-22
+
+### Added
+
+- **Production Hardening Sprint** — Four parallel workstreams closing all pre-deployment gaps:
+  - Oxlint configuration repaired (237 warnings, 0 errors)
+  - Zod schema validation on all 15+ GET route query params (coerce.number, enum, defaults)
+  - Advisory file locking (FileLock) for concurrent write protection on CLI/news CSV append operations
+  - 27 unit tests for TS ML modules (drift.ts, online.ts, monitor.ts) mocking subprocess+store
+- **Python ML Pipeline Tests** — 209 tests achieving 86% coverage across all 8 Python modules (model.py, manifest.py, indicators.py, predict.py, online.py, detect_drift.py, train.py, daemon.py). Testing infrastructure: ml/tests/ directory, pytest config, npm test:python scripts
+- **Gemini Reasoning Batching** — Per-token LLM calls batched into single API call via batchGenerateReasoning(). Both local LLM (RADAR__AI_BASE_URL) and Vertex AI paths supported
+- **Additional Technical Indicators** — 8 new pandas-ta indicators added to ml/indicators.py: KAMA, ALMA, HMA, SuperTrend, SSL, Z-Score, Donchian Channels, Pivot Points
+- **Configurable CORS Origins** — CORS_ORIGIN env var replaces hardcoded Vercel URLs. Priority: env var → opts.corsOrigin → localhost defaults
+- **Configurable Swagger URL** — RADAR__SWAGGER_URL env var (default http://localhost:8080) replaces hardcoded daemon port 9877
+
+### Changed
+
+- deploy.sh no longer deploys RADAR__AI_API_KEY secret (development-only; production uses Vertex AI)
+
+### Fixed
+
+- Dead ws.test.ts removed (ws.ts deleted in WebSocket removal)
+- Daemon test EADDRINUSE flake — mock listen replaces real port binding
+
+## [2.7.0] — 2026-07-22
 
 ### Added
 
@@ -22,10 +75,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config & Schema Import Alignment** — Restored critical exports and imports in `src/core/llm-provider.ts` and `src/store/db.ts`, integrating them directly into the runtime lifecycles (calling `loadConfig()` during token analysis and utilizing `SCHEMA_DDL` to log schema parameters during migrations).
 - **Interactive AI Paper-Trading Advisor** (`src/api/fastify/routes/portfolio.ts`) — Created a `POST /api/portfolio/chat` route endpoint allowing users to converse with an AI quant trading assistant that directly executes simulated paper trades on user command.
 - **Refined News Filter Matching** (`src/news.ts`) — Relaxed the overly restrictive `POISON_PATTERNS` regex filter to allow standard crypto financial keywords (e.g. *price*, *trading*, *buy*, *sell*) while keeping tutorial and spam protection intact.
+- **Oxlint Configuration** (`.oxlintrc.json`) — Replaced ESLint with oxlint for faster linting.
+- **TypeScript 7.0.2 Migration** — Upgraded from TS 6.0.3 to TS 7.0.2 with updated tsconfig (`target: ES2024`, `erasableSyntaxOnly`, `strictBuiltinIteratorReturn`, `--checkers 4`).
+- **JWT Authentication on API Endpoints** (`src/api/fastify/routes/rest.ts`, `src/api/fastify/routes/ml.ts`) — Added JWT auth guard to 10 GET endpoints: portfolio, predictions, and all ML routes.
+- **Circuit Breaker Wiring** (`src/binance.ts`) — Wired circuit breaker into `fetchTicker`, `fetchExchangeInfo`, and `fetchDepth`. Previously implemented as library code with zero callers.
+- **Timing-Safe Authentication** (`src/api/fastify/routes/rest.ts`) — Replaced string comparison with `timingSafeEqual()` on `POST /api/collect`.
+- **Dockerfile Production Hardening** (`Dockerfile`) — Added `USER node`, `HEALTHCHECK`, `RUN npm prune --omit=dev`. Removed stale `RADAR__DAEMON_PORT`.
+- **ML Pipeline Symbol-to-Pair Fix** (`src/cli.ts`, `src/api/fastify/routes/cron.ts`) — Fixed ML pipelines to convert short symbols to full Binance pairs before querying klines store.
+- **ML Python Indicator Fix** (`ml/indicators.py`) — Fixed column name mismatch and pandas-ta import error handling.
+- **Cloud Mode Detection** (`src/core/config.ts`) — Extended `isCloudMode()` to detect `CLOUD_RUN_JOB` and `K_CONFIGURATION`.
+- **CRON_SECRET Env Var Bridging** (`src/core/config.ts`) — Added `RADAR__CRON_SECRET` → `CRON_SECRET` mapping.
+- **Terraform Provider Update** (`infra/main.tf`) — Updated Google provider to `~> 6.0`, added service account resource.
+- **Oxlint Lint Script** (`package.json`) — Replaced `eslint src/` with `oxlint src/`.
+
+### Changed
+
+- **Default Scan/ML Token Count** — Increased default from 20 to 50.
+- **Paper Trade Path Resolution** (`src/paper-trade.ts`) — Normalized all file writes through `config.dataDir`.
+- **ML Model Path Resolution** (`src/ml/predict.ts`) — Removed CWD-relative fallback; resolves only through `config.dataDir`.
+- **Unused Variables Wired In** — Used `closes`, `symbol`, `adxAdj` params in their respective functions. Wired `request.ip/url` into action route logs. Used `reply.send()` in trade handler.
+- **Deploy.sh Parameterization** (`deploy.sh`) — `PROJECT_ID` reads from env with gcloud fallback.
+
+### Fixed
+
+- **Collector Script Hardcoded Path** (`scripts/crypto-radar-collector.sh`) — Removed `/home/sam/...` fallback path. Exits with clear error showing lookup paths.
+- **Deploy.sh Secret Version Typo** (`deploy.sh`) — Fixed `***` → `latest` for AI API key secret version.
+- **SPEC.md CRON_SECRET Documentation** (`SPEC.md`) — Aligned env var name with code.
+- **`.env.example` CRON_SECRET Entry** (`.env.example`) — Added CRON_SECRET section.
+- **Non-ML Pipeline Verified** — Live Binance scan successful (SOL $78.15), 11 output files, `/api/health` 200, `/api/tokens` 85 tokens. 1231 tests passing, build 0 errors.
 
 ### Removed
 
 - **Legacy WebSocket Hub (`src/api/ws.ts`)** — Completely removed the WebSocket server, broadcast hooks, and the `ws` package dependency. This aligns with a purely request-driven, stateless architecture optimized for Google Cloud Run (avoiding scale-to-zero connection blockages and timeout overhead).
+- **ESLint Configuration** — Replaced by oxlint.
 
 ## [2.6.0] — 2026-07-19
 

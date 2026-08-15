@@ -32,7 +32,12 @@ if [ -f "$SCRIPT_DIR/../dist/cli.js" ]; then
 elif [ -f "$(pwd)/dist/cli.js" ]; then
   PLUGIN_DIR="$(pwd)"
 else
-  PLUGIN_DIR="/home/sam/Music/Crypto-Radar-Signals/Hermes-Crypto-Radar"
+  echo "  ❌ Crypto Radar collector: dist/cli.js not found"
+  echo "     Looked in:"
+  echo "       - $SCRIPT_DIR/../dist/cli.js"
+  echo "       - $(pwd)/dist/cli.js"
+  echo "     Run 'npm run build' in the plugin directory first."
+  exit 1
 fi
 
 DATA_DIR="${RADAR__DATA_DIR:-${PLUGIN_DIR}/data/crypto-radar}"
@@ -72,7 +77,7 @@ trap 'rm -f "$SCAN_STDERR" "$SCAN_STDOUT"' EXIT
 
 SCAN_EXIT=0
 node dist/cli.js scan \
-  --dynamic 30 \
+  --dynamic 50 \\
   --onchain \
   --no-news \
   --format json \

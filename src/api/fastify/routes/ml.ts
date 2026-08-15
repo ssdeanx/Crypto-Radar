@@ -18,7 +18,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   const store = app.store;
 
   // ── GET /api/ml/status — ML pipeline health ──
-  app.get('/api/ml/status', async () => {
+  app.get('/api/ml/status', { preHandler: [app.authenticate] }, async () => {
     const config = loadConfig();
     let modelsDir = path.join(config.dataDir, 'ml', 'models');
     if (!existsSync(modelsDir)) {
@@ -70,7 +70,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/ml/models — list all models ──
-  app.get('/api/ml/models', async () => {
+  app.get('/api/ml/models', { preHandler: [app.authenticate] }, async () => {
     let modelsDir = path.join(loadConfig().dataDir, 'ml', 'models');
     if (!existsSync(modelsDir)) {
       modelsDir = path.resolve(process.cwd(), 'ml', 'models');
@@ -100,7 +100,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/ml/drift — recent drift events ──
-  app.get('/api/ml/drift', async (request) => {
+  app.get('/api/ml/drift', { preHandler: [app.authenticate] }, async (request) => {
     const query = request.query as { limit?: string };
     const limit = parseInt(query.limit ?? '50', 10);
     const events = await store.getDriftEvents({ limit });
@@ -108,7 +108,7 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/ml/predictions — recent predictions ──
-  app.get('/api/ml/predictions', async (request) => {
+  app.get('/api/ml/predictions', { preHandler: [app.authenticate] }, async (request) => {
     const query = request.query as { limit?: string; symbol?: string };
     const limit = parseInt(query.limit ?? '50', 10);
     const predictions = await store.getPredictions({
@@ -119,13 +119,13 @@ export const mlRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ── GET /api/ml/calibration — prediction calibration report ──
-  app.get('/api/ml/calibration', async () => {
+  app.get('/api/ml/calibration', { preHandler: [app.authenticate] }, async () => {
     const calibration = await computeCalibration(store);
     return calibration;
   });
 
   // ── GET /api/ml/online — online model metrics ──
-  app.get('/api/ml/online', async () => {
+  app.get('/api/ml/online', { preHandler: [app.authenticate] }, async () => {
     const { onlineMetrics } = await import('../../../ml/online.js');
     const metrics = await onlineMetrics();
     return metrics ?? { status: 'unavailable', message: 'No online model trained yet' };

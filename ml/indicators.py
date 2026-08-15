@@ -12,6 +12,7 @@ All functions are self-contained with lazy imports for optional dependencies.
 import json
 import logging
 import sys
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -85,7 +86,7 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
     WILLIAMS %R(14), CCI(20), ROC(12), EMA cross signals, CMF(20), MFI(14).
     """
     try:
-        import pandas_ta_classic as ta  # type: ignore
+        import pandas_ta_classic as ta
     except Exception as e:
         logger.error("pandas-ta requested (--add-ta) but not installed: %s", e)
         print(json.dumps({"error": f"pandas-ta not available: {e}"}))
@@ -104,7 +105,7 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
                 break
 
     # Helper: wrap a single indicator call with try/except
-    def _add(name: str, result) -> None:
+    def _add(name: str, result: Any) -> None:
         if result is None:
             return
         if isinstance(result, pd.Series):
@@ -197,10 +198,33 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
         except Exception as e:
             logger.warning("TA STOCH failed: %s", e)
 
+        # 9. KAMA(10) — Kaufman's Adaptive Moving Average
+        try:
+            _add(f"{base}_kama_10", ta.kama(series, length=10, fast=2, slow=30))
+        except Exception as e:
+            logger.warning("TA KAMA failed for %s: %s", base, e)
+
+        # 10. ALMA(9) — Arnaud Legoux Moving Average
+        try:
+            _add(f"{base}_alma_9", ta.alma(series, length=9, sigma=6, distribution_offset=0.85))
+        except Exception as e:
+            logger.warning("TA ALMA failed for %s: %s", base, e)
+
+        # 11. HMA(9) — Hull Moving Average
+        try:
+            _add(f"{base}_hma_9", ta.hma(series, length=9))
+        except Exception as e:
+            logger.warning("TA HMA failed for %s: %s", base, e)
+
+        # 12. Z-Score(21) — volatility-normalized price position
+        try:
+            _add(f"{base}_zscore_21", ta.zscore(series, length=21))
+        except Exception as e:
+            logger.warning("TA Z-Score failed for %s: %s", base, e)
+
     # 9–12. Multi-column indicators (run once, not per-base-column)
     has_ohlc = all(k in col_map for k in ("open", "high", "low", "close"))
     if has_ohlc:
-        open_c = col_map["open"]
         high_c = col_map["high"]
         low_c = col_map["low"]
         close_c = col_map["close"]
@@ -236,23 +260,81 @@ def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
             except Exception as e:
                 logger.warning("TA MFI failed: %s", e)
 
+        # 13–16. Additional multi-column indicators
+        # 13. SuperTrend(10,3)
+        try:
+            _add("supertrend_10_3", ta.supertrend(df[high_c], df[low_c], df[close_c], length=10, multiplier=3))
+        except Exception as e:
+            logger.warning("TA SuperTrend failed: %s", e)
+
+        # 14. SSL Channel(10) — custom (not in pandas_ta_classic)
+        try:
+            ssl_sma = df[close_c].rolling(window=10).mean()
+            ssl_h = df[high_c].rolling(window=10).mean()
+            ssl_l = df[low_c].rolling(window=10).mean()
+            ssl_dir = pd.Series(0, index=df.index, dtype=int)
+            ssl_dir[df[close_c] > ssl_sma] = 1
+            ssl_dir[df[close_c] < ssl_sma] = -1
+            df["ssl_channel_10"] = (ssl_h + ssl_l) / 2
+            ta_cols.append("ssl_channel_10")
+            df["ssl_direction_10"] = ssl_dir
+            ta_cols.append("ssl_direction_10")
+        except Exception as e:
+            logger.warning("TA SSL failed: %s", e)
+
+        # 15. Donchian Channel(20)
+        try:
+            _add("dc_20", ta.donchian(df[high_c], df[low_c], lower_length=20, upper_length=20))
+        except Exception as e:
+            logger.warning("TA Donchian failed: %s", e)
+
+        # 16. Pivot Points(2,2) — custom (not in pandas_ta_classic)
+        try:
+            pp_window = 2 + 2 + 1  # left + right + center
+            high_window = df[high_c].rolling(window=pp_window, center=True).max()
+            low_window = df[low_c].rolling(window=pp_window, center=True).min()
+            pivot_h = df[high_c][df[high_c] == high_window].reindex(df.index)
+            pivot_l = df[low_c][df[low_c] == low_window].reindex(df.index)
+            df["pivot_high_2_2"] = pivot_h
+            ta_cols.append("pivot_high_2_2")
+            df["pivot_low_2_2"] = pivot_l
+            ta_cols.append("pivot_low_2_2")
+        except Exception as e:
+            logger.warning("TA Pivot failed: %s", e)
+
     logger.info("Added %d pandas-ta indicator columns", len(ta_cols))
     return feature_cols + [c for c in ta_cols if c not in feature_cols]
 
 
-def compute_latest_indicators(df: pd.DataFrame) -> dict:
+# ── Additional TA feature names (for test verification) ────────────────────
+
+
+ADDITIONAL_TA_NAMES: list[str] = [
+    "kama",
+    "alma",
+    "hma",
+    "zscore",
+    "supertrend",
+    "ssl",
+    "donchian",
+    "pivot",
+]
+
+
+def compute_latest_indicators(df: pd.DataFrame) -> dict[str, Any]:
     """Compute all technical indicators for the latest row to serve to the Node.js frontend."""
     try:
         import pandas_ta_classic as ta
-    except ImportError:
+    except Exception:
         return {}
 
-    def val(s):
-        if s is None: return None
+    def val(s: Any) -> float | None:
+        if s is None:
+            return None
         v = s.iloc[-1]
         return None if pd.isna(v) or not np.isfinite(v) else float(v)
 
-    out: dict = {
+    out: dict[str, Any] = {
         'rsi': None,
         'mfi': None,
         'bb': None,
@@ -282,15 +364,29 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         'elderRay': { 'bullPower': None, 'bearPower': None },
         'fisher': None,
         'massIndex': None,
-        'rangePosWindow': 0.5
+        'rangePosWindow': 0.5,
+        'supertrend': { 'value': None, 'direction': 1, 'isReversal': False },
+        'chop': None,
+        'squeeze': { 'inSqueeze': False, 'bbWidth': None },
+        'fvg': { 'type': 'none', 'gapPercent': 0.0 },
+        'candlePattern': 'neutral',
     }
     if len(df) < 5:
+        return out
+
+    # F5: pandas-ta has a bug with 15-40 row DataFrames causing 'iloc cannot enlarge'
+    # Skip pandas-ta for small windows; TS-side indicators are already sufficient
+    if len(df) < 50:
+        # Still compute VWAP and basic info from raw data
+        if 'close' in df.columns and 'volume' in df.columns:
+            c_small = df['close']
+            v_small = df['volume']
+            out['obv'] = float((c_small.diff() > 0).astype(int).replace(0, -1).mul(v_small).sum()) if len(v_small) > 1 else None
         return out
 
     c = df['close']
     h = df['high']
     l = df['low']
-    o = df['open']
     v = df['volume']
 
     # RSI
@@ -336,7 +432,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         recent = v.iloc[-7:].mean()
         older = v.iloc[-14:-7].mean()
         out['volTrend'] = (recent / older) - 1 if older > 0 else 0.0
-    else: out['volTrend'] = None
+    else:
+        out['volTrend'] = None
 
     # Price vs EMA50
     ema50 = ta.ema(c, length=50)
@@ -352,7 +449,8 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         avg_vol = v.iloc[:-1].mean()
         cur_vol = val(v)
         out['volVsAvg'] = (cur_vol / avg_vol) - 1 if avg_vol > 0 and cur_vol is not None else None
-    else: out['volVsAvg'] = None
+    else:
+        out['volVsAvg'] = None
 
     # Stochastic
     stoch = ta.stoch(h, l, c, k=14, d=3, smooth_k=3)
@@ -413,81 +511,124 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         out['psar'] = { 'sar': None, 'acceleration': 0.02, 'isReversal': False }
 
     # CCI
-    cci = ta.cci(h, l, c, length=20)
-    out['cci'] = val(cci) if cci is not None else None
+    try:
+        cci = ta.cci(h, l, c, length=20)
+        out['cci'] = val(cci) if cci is not None else None
+    except Exception:
+        out['cci'] = None
 
     # Keltner Channels
-    kc = ta.kc(h, l, c, length=20, scalar=2)
-    if kc is not None and len(kc.columns) >= 3:
-        out['keltner'] = {
-            'lower': val(kc.iloc[:, 0]),
-            'middle': val(kc.iloc[:, 1]),
-            'upper': val(kc.iloc[:, 2])
-        }
-    else:
+    try:
+        kc = ta.kc(h, l, c, length=20, scalar=2)
+        if kc is not None and len(kc.columns) >= 3:
+            out['keltner'] = {
+                'lower': val(kc.iloc[:, 0]),
+                'middle': val(kc.iloc[:, 1]),
+                'upper': val(kc.iloc[:, 2])
+            }
+        else:
+            out['keltner'] = { 'lower': None, 'middle': None, 'upper': None }
+    except Exception:
         out['keltner'] = { 'lower': None, 'middle': None, 'upper': None }
 
     # ROC
-    roc = ta.roc(c, length=12)
-    out['roc'] = val(roc) if roc is not None else None
+    try:
+        roc = ta.roc(c, length=12)
+        out['roc'] = val(roc) if roc is not None else None
+    except Exception:
+        out['roc'] = None
 
     # VWAP
-    vwap = ta.vwap(h, l, c, v)
-    out['vwap'] = val(vwap) if vwap is not None else None
+    try:
+        vwap = ta.vwap(h, l, c, v)
+        out['vwap'] = val(vwap) if vwap is not None else None
+    except Exception:
+        if v.sum() > 0:
+            typical_price = (h + l + c) / 3.0
+            out['vwap'] = float((typical_price * v).sum() / v.sum())
+        else:
+            out['vwap'] = None
 
     # Force Index
-    efi = ta.efi(c, v, length=13)
-    out['forceIndex'] = val(efi) if efi is not None else None
+    try:
+        efi = ta.efi(c, v, length=13)
+        out['forceIndex'] = val(efi) if efi is not None else None
+    except Exception:
+        out['forceIndex'] = None
 
     # ADL
-    ad = ta.ad(h, l, c, v)
-    out['adl'] = val(ad) if ad is not None else None
+    try:
+        ad = ta.ad(h, l, c, v)
+        out['adl'] = val(ad) if ad is not None else None
+    except Exception:
+        out['adl'] = None
 
     # Chaikin Osc
-    adosc = ta.adosc(h, l, c, v)
-    out['chaikinOsc'] = val(adosc) if adosc is not None else None
+    try:
+        adosc = ta.adosc(h, l, c, v)
+        out['chaikinOsc'] = val(adosc) if adosc is not None else None
+    except Exception:
+        out['chaikinOsc'] = None
 
     # StochRSI
-    stochrsi = ta.stochrsi(c)
-    if stochrsi is not None and len(stochrsi.columns) >= 2:
-        out['stochRsi'] = {
-            'k': val(stochrsi.iloc[:, 0]),
-            'd': val(stochrsi.iloc[:, 1])
-        }
-    else:
+    try:
+        stochrsi = ta.stochrsi(c)
+        if stochrsi is not None and len(stochrsi.columns) >= 2:
+            out['stochRsi'] = {
+                'k': val(stochrsi.iloc[:, 0]),
+                'd': val(stochrsi.iloc[:, 1])
+            }
+        else:
+            out['stochRsi'] = { 'k': None, 'd': None }
+    except Exception:
         out['stochRsi'] = { 'k': None, 'd': None }
 
     # TRIX
-    trix = ta.trix(c, length=15)
-    out['trix'] = val(trix.iloc[:, 0]) if trix is not None else None
+    try:
+        trix = ta.trix(c, length=15)
+        out['trix'] = val(trix.iloc[:, 0]) if trix is not None else None
+    except Exception:
+        out['trix'] = None
 
     # KST
-    kst = ta.kst(c)
-    if kst is not None and len(kst.columns) >= 2:
-        out['kst'] = {
-            'kst': val(kst.iloc[:, 0]),
-            'signal': val(kst.iloc[:, 1])
-        }
-    else:
+    try:
+        kst = ta.kst(c)
+        if kst is not None and len(kst.columns) >= 2:
+            out['kst'] = {
+                'kst': val(kst.iloc[:, 0]),
+                'signal': val(kst.iloc[:, 1])
+            }
+        else:
+            out['kst'] = { 'kst': None, 'signal': None }
+    except Exception:
         out['kst'] = { 'kst': None, 'signal': None }
 
     # Elder Ray
-    eri = ta.eri(h, l, c, length=13)
-    if eri is not None and len(eri.columns) >= 2:
-        out['elderRay'] = {
-            'bullPower': val(eri.iloc[:, 0]),
-            'bearPower': val(eri.iloc[:, 1])
-        }
-    else:
+    try:
+        eri = ta.eri(h, l, c, length=13)
+        if eri is not None and len(eri.columns) >= 2:
+            out['elderRay'] = {
+                'bullPower': val(eri.iloc[:, 0]),
+                'bearPower': val(eri.iloc[:, 1])
+            }
+        else:
+            out['elderRay'] = { 'bullPower': None, 'bearPower': None }
+    except Exception:
         out['elderRay'] = { 'bullPower': None, 'bearPower': None }
 
     # Fisher
-    fisher = ta.fisher(h, l, length=9)
-    out['fisher'] = val(fisher.iloc[:, 0]) if fisher is not None else None
+    try:
+        fisher = ta.fisher(h, l, length=9)
+        out['fisher'] = val(fisher.iloc[:, 0]) if fisher is not None else None
+    except Exception:
+        out['fisher'] = None
 
     # Mass Index
-    massi = ta.massi(h, l)
-    out['massIndex'] = val(massi) if massi is not None else None
+    try:
+        massi = ta.massi(h, l)
+        out['massIndex'] = val(massi) if massi is not None else None
+    except Exception:
+        out['massIndex'] = None
 
     # Range Pos Window
     period_h = h.max()
@@ -497,6 +638,104 @@ def compute_latest_indicators(df: pd.DataFrame) -> dict:
         out['rangePosWindow'] = (close_val - period_l) / rng
     else:
         out['rangePosWindow'] = 0.5
+
+    # Supertrend
+    try:
+        st = ta.supertrend(h, l, c, length=10, multiplier=3)
+        if st is not None and len(st.columns) >= 2:
+            st_val = val(st.iloc[:, 0])
+            st_dir = val(st.iloc[:, 1])
+            rev = False
+            if len(st) >= 2:
+                rev = bool(st.iloc[-1, 1] != st.iloc[-2, 1])
+            out['supertrend'] = {
+                'value': st_val,
+                'direction': int(st_dir) if st_dir is not None else 1,
+                'isReversal': rev
+            }
+        else:
+            out['supertrend'] = { 'value': None, 'direction': 1, 'isReversal': False }
+    except Exception:
+        out['supertrend'] = { 'value': None, 'direction': 1, 'isReversal': False }
+
+    # Choppiness Index (CHOP)
+    try:
+        chop = ta.chop(h, l, c, length=14)
+        out['chop'] = val(chop) if chop is not None else None
+    except Exception:
+        out['chop'] = None
+
+    # Keltner Squeeze Momentum
+    try:
+        if out.get('bb') and out.get('keltner') and out['bb']['upper'] is not None and out['keltner']['upper'] is not None:
+            bb_u = out['bb']['upper']
+            bb_l = out['bb']['lower']
+            kc_u = out['keltner']['upper']
+            kc_l = out['keltner']['lower']
+            in_sq = bool(bb_u is not None and kc_u is not None and bb_l is not None and kc_l is not None and bb_u < kc_u and bb_l > kc_l)
+            out['squeeze'] = {
+                'inSqueeze': in_sq,
+                'bbWidth': out['bb'].get('width', 0)
+            }
+        else:
+            out['squeeze'] = { 'inSqueeze': False, 'bbWidth': None }
+    except Exception:
+        out['squeeze'] = { 'inSqueeze': False, 'bbWidth': None }
+
+    # Fair Value Gap (FVG) detection
+    try:
+        if len(df) >= 3:
+            bull_fvg = bool(l.iloc[-1] > h.iloc[-3])
+            bear_fvg = bool(h.iloc[-1] < l.iloc[-3])
+            gap_pct = 0.0
+            fvg_type = "none"
+            if bull_fvg and c.iloc[-1] > 0:
+                fvg_type = "bullish"
+                gap_pct = float((l.iloc[-1] - h.iloc[-3]) / c.iloc[-1] * 100)
+            elif bear_fvg and c.iloc[-1] > 0:
+                fvg_type = "bearish"
+                gap_pct = float((l.iloc[-3] - h.iloc[-1]) / c.iloc[-1] * 100)
+            out['fvg'] = {
+                'type': fvg_type,
+                'gapPercent': round(gap_pct, 4) if np.isfinite(gap_pct) else 0.0
+            }
+        else:
+            out['fvg'] = { 'type': 'none', 'gapPercent': 0.0 }
+    except Exception:
+        out['fvg'] = { 'type': 'none', 'gapPercent': 0.0 }
+
+    # Candlestick Patterns
+    try:
+        if len(df) >= 2:
+            o_s = df['open']
+            prev_o = o_s.iloc[-2]
+            prev_c = c.iloc[-2]
+            cur_o = o_s.iloc[-1]
+            cur_c = c.iloc[-1]
+            cur_h = h.iloc[-1]
+            cur_l = l.iloc[-1]
+
+            bull_engulfing = bool((prev_c < prev_o) and (cur_c > cur_o) and (cur_o <= prev_c) and (cur_c >= prev_o))
+            bear_engulfing = bool((prev_c > prev_o) and (cur_c < cur_o) and (cur_o >= prev_c) and (cur_c <= prev_o))
+
+            body = abs(cur_c - cur_o)
+            lower_shadow = min(cur_o, cur_c) - cur_l
+            upper_shadow = cur_h - max(cur_o, cur_c)
+            is_hammer = bool((lower_shadow >= 2 * body) and (upper_shadow <= 0.2 * body) and (cur_c > cur_o))
+
+            pattern = "neutral"
+            if bull_engulfing:
+                pattern = "bullish_engulfing"
+            elif bear_engulfing:
+                pattern = "bearish_engulfing"
+            elif is_hammer:
+                pattern = "hammer"
+
+            out['candlePattern'] = pattern
+        else:
+            out['candlePattern'] = "neutral"
+    except Exception:
+        out['candlePattern'] = "neutral"
 
     return out
 
@@ -519,6 +758,9 @@ if __name__ == '__main__':
                 if 'open_time' in df.columns:
                     df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce').astype('Int64')
                     df.index = pd.to_datetime(df['open_time'], unit='ms')
+                elif 'openTime' in df.columns:
+                    df['openTime'] = pd.to_numeric(df['openTime'], errors='coerce').astype('Int64')
+                    df.index = pd.to_datetime(df['openTime'], unit='ms')
                 for col in ['open', 'high', 'low', 'close', 'volume']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)
@@ -538,6 +780,9 @@ if __name__ == '__main__':
         if 'open_time' in df.columns:
             df['open_time'] = pd.to_numeric(df['open_time'], errors='coerce').astype('Int64')
             df.index = pd.to_datetime(df['open_time'], unit='ms')
+        elif 'openTime' in df.columns:
+            df['openTime'] = pd.to_numeric(df['openTime'], errors='coerce').astype('Int64')
+            df.index = pd.to_datetime(df['openTime'], unit='ms')
         for col in ['open', 'high', 'low', 'close', 'volume']:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce').astype(float)

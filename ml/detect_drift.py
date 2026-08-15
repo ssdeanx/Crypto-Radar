@@ -42,6 +42,7 @@ import json
 import logging
 import sys
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # ── Detector factory ──
 
 
-def build_detector(model: str, delta: float):
+def build_detector(model: str, delta: float) -> Any:
     """Construct a river drift detector by name.
 
     Args:
@@ -124,7 +125,7 @@ def build_detector(model: str, delta: float):
 # ── Helpers ──
 
 
-def _load_records() -> list[dict]:
+def _load_records() -> list[dict[str, Any]]:
     """Read and parse the JSON array from stdin. Raises on malformed input."""
     raw = sys.stdin.read()
     if not raw.strip():
@@ -198,7 +199,7 @@ def detect_drift(args: argparse.Namespace) -> None:
         return
 
     # ── Run detector over confidence values ──
-    warnings: list[dict] = []
+    warnings: list[dict[str, Any]] = []
     total_observations = 0
     total_detections = 0
 

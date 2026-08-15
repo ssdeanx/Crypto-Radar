@@ -34,6 +34,9 @@ vi.mock('./binance.js', () => mockBinance);
 vi.mock('./tokens.js', () => mockTokens);
 vi.mock('./core/cache.js', () => mockCacheModule);
 
+const mockCreateApp = vi.hoisted(() => vi.fn());
+vi.mock('./api/fastify/app.js', () => ({ createApp: mockCreateApp }));
+
 // ── Module under test ──
 
 import { isDaemonRunning, stopDaemon } from './daemon.js';
@@ -113,30 +116,22 @@ describe('stopDaemon', () => {
 describe('HTTP server', () => {
   beforeAll(async () => {
     vi.useFakeTimers();
-    // We still need mockHttp.createServer to not throw, but Fastify manages its own server
-    mockHttp.createServer.mockReturnValue({
-      listen: vi.fn((...args: unknown[]) => {
-        const cb = typeof args[args.length - 1] === 'function' ? args[args.length - 1] as () => void : undefined;
-        cb?.();
-      }),
+    // Mock createApp to return a mock Fastify that doesn't bind a real port
+    mockCreateApp.mockResolvedValue({
+      get: vi.fn(),
+      post: vi.fn(),
+      ready: vi.fn(() => Promise.resolve()),
       close: vi.fn(),
-      address: vi.fn(() => null),
-      addListener: vi.fn(),
-      emit: vi.fn(),
-      on: vi.fn(),
-      once: vi.fn(),
-      removeListener: vi.fn(),
-      off: vi.fn(),
-      removeAllListeners: vi.fn(),
-      listeners: vi.fn(() => []),
-      eventNames: vi.fn(() => []),
-      getMaxListeners: vi.fn(() => 10),
-      setMaxListeners: vi.fn(),
-      listenerCount: vi.fn(() => 0),
-      prependListener: vi.fn(),
-      prependOnceListener: vi.fn(),
-      rawListeners: vi.fn(() => []),
-    } as unknown as import('node:http').Server);
+      listen: vi.fn().mockResolvedValue(undefined),
+      addHook: vi.fn(),
+      setNotFoundHandler: vi.fn(),
+      setErrorHandler: vi.fn(),
+      register: vi.fn(),
+      decorate: vi.fn(),
+      decorateReply: vi.fn(),
+      log: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), fatal: vi.fn(), debug: vi.fn(), child: vi.fn() },
+      server: {},
+    } as never);
     mockBinance.fetchAllTickers.mockResolvedValue(new Map([['SOLUSDT', { symbol: 'SOLUSDT', lastPrice: '150' }]]));
     mockBinance.fetchKlines.mockResolvedValue([]);
     mockTokens.getTokenList.mockReturnValue([]);

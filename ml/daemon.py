@@ -21,6 +21,7 @@ import sys
 import traceback
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from online import OnlineModel
@@ -30,8 +31,17 @@ from predict import _load_norm_stats, load_model
 
 logger = logging.getLogger(__name__)
 
+
 class ModelManager:
-    def __init__(self):
+    catboost_model: Any | None
+    norm_stats: dict[str, Any] | None
+    feature_names: list[str] | None
+    classes: list[Any] | None
+    class_to_idx: dict[int, int] | None
+    online_model: Any | None
+    online_model_path: Path | None
+
+    def __init__(self) -> None:
         self.catboost_model = None
         self.norm_stats = None
         self.feature_names = None
@@ -40,16 +50,18 @@ class ModelManager:
         self.online_model = None
         self.online_model_path = None
 
+
 manager = ModelManager()
 
+
 class DaemonHandler(BaseHTTPRequestHandler):
-    def _send_response(self, code: int, data: dict | list):
+    def _send_response(self, code: int, data: dict[str, Any] | list[Any]) -> None:
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
-    def do_GET(self):
+    def do_GET(self) -> None:
         if self.path == "/metrics":
             if manager.online_model:
                 metrics = manager.online_model.get_metrics()
@@ -59,12 +71,12 @@ class DaemonHandler(BaseHTTPRequestHandler):
         else:
             self._send_response(404, {"error": "Not Found"})
 
-    def do_POST(self):
+    def do_POST(self) -> None:
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
         try:
-            req = json.loads(body.decode("utf-8"))
+            req: dict[str, Any] = json.loads(body.decode("utf-8"))
         except Exception as e:
             self._send_response(400, {"error": f"Invalid JSON: {e}"})
             return
@@ -78,7 +90,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
         else:
             self._send_response(404, {"error": "Not Found"})
 
-    def _handle_predict(self, req):
+    def _handle_predict(self, req: dict[str, Any]) -> None:
         rows = req.get("rows")
         if rows is None:
             if "features" in req:
@@ -120,29 +132,31 @@ class DaemonHandler(BaseHTTPRequestHandler):
                     x_row.append(float(val))
             X.append(x_row)
 
-        X = np.array(X, dtype=np.float64)
+        X_arr: Any = np.array(X, dtype=np.float64)
 
         try:
-            predictions = manager.catboost_model.predict(X)
-            probabilities = manager.catboost_model.predict_proba(X)
+            predictions = manager.catboost_model.predict(X_arr)
+            probabilities = manager.catboost_model.predict_proba(X_arr)
         except Exception as e:
-            logger.error("Prediction failed: %s\\n%s", e, traceback.format_exc())
+            logger.error("Prediction failed: %s\n%s", e, traceback.format_exc())
             self._send_response(500, {"error": f"Prediction failed: {e}"})
             return
 
-        results = []
+        results: list[dict[str, Any]] = []
+        class_to_idx = manager.class_to_idx or {}
+        classes = manager.classes or []
         for i in range(len(predictions)):
             pred_class = int(predictions[i])
-            cls_idx = manager.class_to_idx.get(pred_class)
+            cls_idx = class_to_idx.get(pred_class)
             confidence = float(probabilities[i][cls_idx]) if cls_idx is not None else 0.0
 
             probs_map = {
                 int(cls): round(float(probabilities[i][j]), 4)
-                for j, cls in enumerate(manager.classes)
+                for j, cls in enumerate(classes)
             }
             ordered_probs = [probs_map.get(c, 0.0) for c in [-1, 0, 1]]
 
-            res = {
+            res: dict[str, Any] = {
                 "direction": pred_class,
                 "confidence": round(confidence, 4),
                 "probs": ordered_probs,
@@ -158,7 +172,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
 
         self._send_response(200, results)
 
-    def _handle_fit(self, req):
+    def _handle_fit(self, req: dict[str, Any]) -> None:
         if not manager.online_model:
             self._send_response(400, {"error": "Online model not loaded"})
             return
@@ -173,10 +187,10 @@ class DaemonHandler(BaseHTTPRequestHandler):
             manager.online_model.partial_fit(features, label)
             self._send_response(200, {"status": "trained", "total_updates": manager.online_model._total_updates})
         except Exception as e:
-            logger.error("Online fit failed: %s\\n%s", e, traceback.format_exc())
+            logger.error("Online fit failed: %s\n%s", e, traceback.format_exc())
             self._send_response(500, {"error": str(e)})
 
-    def _handle_save(self, req):
+    def _handle_save(self, req: dict[str, Any]) -> None:
         if not manager.online_model:
             self._send_response(400, {"error": "Online model not loaded"})
             return
@@ -188,7 +202,7 @@ class DaemonHandler(BaseHTTPRequestHandler):
             self._send_response(500, {"error": str(e)})
 
 
-def parse_args():
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Persistent Worker Daemon for ML Inference & Online Learning")
     parser.add_argument("--host", default="127.0.0.1", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
@@ -197,7 +211,8 @@ def parse_args():
     parser.add_argument("--norm-stats", default=None, help="Path to norm_stats JSON")
     parser.add_argument("--online-model", default="ml/models/online_model.joblib", help="Path to online model pickle")
     parser.add_argument("--features", default=None, help="Comma separated list of feature names")
-    return parser.parse_args()
+    return parser.parse_args(argv)
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] daemon: %(message)s")

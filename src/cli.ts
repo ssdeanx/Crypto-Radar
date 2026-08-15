@@ -33,6 +33,7 @@ import { Store } from './store/db.js';
 import { batchPredict, persistPredictions, resolveModelPath, resolveNormStatsPath } from './ml/predict.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { FileLock } from './core/file-lock.js';
 
 // ── Constants ──
 
@@ -157,10 +158,12 @@ program
         buySignals: result.aggregatedSignals.filter(s => /buy/i.test(s.direction ?? '')).length,
         sellSignals: result.aggregatedSignals.filter(s => /sell/i.test(s.direction ?? '')).length,
       });
-      fs.appendFileSync(
-        path.join(dataDir, 'radar-runlog.jsonl'),
-        runLogLine + '\n', 'utf-8',
-      );
+      FileLock.withLock('radar-runlog', () => {
+        fs.appendFileSync(
+          path.join(dataDir, 'radar-runlog.jsonl'),
+          runLogLine + '\n', 'utf-8',
+        );
+      });
 
       // ── Ticker dataset (APPEND-ONLY JSONL, ML-ready) ──
       // One EnrichedTicker per line. Single file accumulates all runs.
@@ -170,7 +173,9 @@ program
       for (const ticker of result.tickers) {
         tickerBatch += toJSONLine(ticker) + '\n';
       }
-      fs.appendFileSync(tickersPath, tickerBatch, 'utf-8');
+      FileLock.withLock('radar-tickers', () => {
+        fs.appendFileSync(tickersPath, tickerBatch, 'utf-8');
+      });
       logger.info(`       ${result.tickers.length} tickers appended to ticker dataset`);
     } catch (err) {
       logger.error('[ERROR] Radar scan failed:', { message: err instanceof Error ? err.message : err });
@@ -1126,7 +1131,11 @@ program
 
       if (action === 'train') {
         logger.info('Training ML model...');
-        const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
+        const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 50);
+        const pairs = symbols.map((s: string) => {
+          const pair = getBinancePair({ sym: s } as TokenDef);
+          return pair || s;
+        });
         const horizon = parseInt(opts.horizon, 10) || 5;
         const lookbackDays = parseInt(opts.lookback, 10) || 90;
         const intervals: KlineInterval[] = ['15m', '1h', '4h', '1d'];
@@ -1145,12 +1154,40 @@ program
         if (solKlines.length >= 20) referenceKlines.set('SOLUSDT', solKlines.map(k => k.close));
         if (polKlines.length >= 20) referenceKlines.set('POLUSDT', polKlines.map(k => k.close));
 
-        for (const symbol of symbols) {
+        for (const symbol of pairs) {
           for (const interval of intervals) {
-            const klines = (await store.getKlines(symbol, interval, {
+            let klines = (await store.getKlines(symbol, interval, {
               limit: Math.max(60, lookbackDays * 24),
               order: 'desc',
             })).reverse();
+            if (klines.length < 60) {
+              try {
+                const bKlines = await fetchKlines(symbol, interval, Math.min(500, Math.max(100, lookbackDays * 24)));
+                klines = bKlines.map(k => ({
+                  symbol,
+                  interval,
+                  open_time: k.openTime,
+                  openTime: k.openTime,
+                  open: k.open,
+                  high: k.high,
+                  low: k.low,
+                  close: k.close,
+                  volume: k.volume,
+                  close_time: k.closeTime,
+                  closeTime: k.closeTime,
+                  quote_volume: k.quoteVolume,
+                  quoteVolume: k.quoteVolume,
+                  count: k.count,
+                  taker_buy_vol: k.takerBuyVol,
+                  takerBuyVol: k.takerBuyVol,
+                  taker_buy_quote_vol: k.takerBuyQuoteVol,
+                  takerBuyQuoteVol: k.takerBuyQuoteVol,
+                  tsUtc: new Date(k.openTime).toISOString(),
+                }));
+              } catch (e) {
+                logger.warn(`  Failed fetching fallback klines for ${symbol} ${interval}: ${String(e)}`);
+              }
+            }
             if (klines.length < 60) {
               logger.warn(`  ${symbol} ${interval}: insufficient data (${klines.length})`);
               continue;
@@ -1237,8 +1274,12 @@ program
           }
         }
 
-        const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
-        const results = await batchPredict(store, symbols, opts.interval ?? '1h', {
+        const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 50);
+        const pairs = symbols.map((s: string) => {
+          const pair = getBinancePair({ sym: s } as TokenDef);
+          return pair || s;
+        });
+        const results = await batchPredict(store, pairs, opts.interval ?? '1h', {
           modelPath,
           normalizationStats,
           minConfidence: 0,

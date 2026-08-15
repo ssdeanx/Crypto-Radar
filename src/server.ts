@@ -22,24 +22,58 @@ async function start() {
   }
 
   const jwtSecretRaw = process.env['RADAR__JWT_SECRET'];
-  if (!jwtSecretRaw) {
-    if (process.env['NODE_ENV'] === 'production') {
-      log.fatal('RADAR__JWT_SECRET must be set in production');
-      process.exit(1);
-    }
+  let jwtSecret: string;
+
+  if (jwtSecretRaw) {
+    jwtSecret = jwtSecretRaw;
+  } else if (process.env['NODE_ENV'] === 'production') {
+    log.fatal('RADAR__JWT_SECRET must be set in production — refusing to start with default');
+    process.exit(1);
+  } else {
+    jwtSecret = 'dev-secret-change-in-production';
     log.warn('RADAR__JWT_SECRET not set — using dev default (NOT for production)');
   }
-  const jwtSecret = jwtSecretRaw ?? 'dev-secret-change-in-production';
 
   const fastify = await createApp({
     store,
     jwtSecret,
+    apiKey: process.env['RADAR__API_KEY'],
     corsOrigin: process.env['CORS_ORIGIN']?.split(',') ?? [
       'https://crypto-radar.vercel.app',
       'http://localhost:5173',
       'http://localhost:4173',
     ],
   });
+
+  let isShuttingDown = false;
+  const handleShutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    log.info(`Received ${signal} signal — initiating graceful shutdown...`);
+
+    try {
+      await fastify.close();
+      log.info('Fastify server closed successfully');
+
+      if (process.env['RADAR__STORAGE_BUCKET']) {
+        log.info('Flushing SQLite store and ML artifacts to GCS bucket...');
+        await store.syncToBucket();
+        await store.syncModelsToBucket();
+      }
+
+      store.close();
+      log.info('Database handle closed successfully');
+
+      log.info('Graceful shutdown completed cleanly');
+      process.exit(0);
+    } catch (err) {
+      log.error('Error during graceful shutdown', { error: String(err) });
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 
   try {
     await fastify.listen({ port, host: '0.0.0.0' });

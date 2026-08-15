@@ -33,14 +33,17 @@ import { portfolioRoutes } from './routes/portfolio.js';
 import { restRoutes } from './routes/rest.js';
 import { cronRoutes } from './routes/cron.js';
 import { taskRoutes } from './routes/tasks.js';
+import { actionRoutes } from './routes/actions.js';
+import { randomUUID } from 'node:crypto';
 import { logger } from '../../core/logger.js';
 
-const log = logger.child({ module: 'fastify-app' });
+const log = logger.child({ module: 'http' });
 
 export interface FastifyAppOptions {
   store: Store;
   paperTrader?: PaperTrader;
   jwtSecret: string;
+  apiKey?: string;
   corsOrigin?: string | string[];
 }
 
@@ -64,6 +67,44 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
     return503OnClosing: true,
   });
 
+  // ── Request logging: decorate with startTime ──
+  app.decorateRequest('startTime', 0);
+
+  // ── Enterprise: Request timing hook ──
+  app.addHook('onRequest', async (request) => {
+    request.startTime = Date.now();
+    request.id = (request.headers['x-request-id'] as string) || randomUUID().slice(0, 8);
+  });
+
+  // ── Enterprise: Static x-api-key header authentication preHandler hook ──
+  app.addHook('onRequest', async (request, reply) => {
+    if (
+      request.url === '/api/health' ||
+      request.url.startsWith('/api/health?') ||
+      request.url === '/api/health/ready' ||
+      request.url === '/api/health/deep' ||
+      request.url.startsWith('/docs')
+    ) {
+      return;
+    }
+
+    const apiKeyEnv = process.env['RADAR__API_KEY'] || opts.apiKey;
+    if (apiKeyEnv) {
+      const apiKeyHeader = request.headers['x-api-key'];
+      const cronSecretHeader = request.headers['x-cron-secret'];
+      const cronSecretEnv = process.env['CRON_SECRET'];
+
+      const isValidApiKey = apiKeyHeader === apiKeyEnv;
+      const isValidCronSecret = Boolean(cronSecretHeader && cronSecretEnv && cronSecretHeader === cronSecretEnv);
+      const isBearerAuth = Boolean(request.headers.authorization?.startsWith('Bearer '));
+
+      if (!isValidApiKey && !isValidCronSecret && !isBearerAuth) {
+        reply.status(401).send({ error: 'Unauthorized: Invalid or missing x-api-key header', code: 'UNAUTHORIZED' });
+        return reply;
+      }
+    }
+  });
+
   // ── Enterprise: Security Headers (@fastify/helmet) ──
   // Sets X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security,
   // X-XSS-Protection, Content-Security-Policy, and more.
@@ -74,13 +115,9 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
 
   // ── Enterprise: CORS (@fastify/cors) ──
   await app.register(cors, {
-    origin: opts.corsOrigin ?? [
-      'https://crypto-radar.vercel.app',
-      'http://localhost:5173',
-      'http://localhost:4173',
-    ],
+    origin: process.env['CORS_ORIGIN']?.split(',') ?? opts.corsOrigin ?? ['http://localhost:5173', 'http://localhost:4173'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'x-cron-secret'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'x-cron-secret', 'x-api-key'],
     credentials: true,
     maxAge: 600, // 10 min preflight cache
   });
@@ -89,6 +126,10 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   // 100 req/min per IP anonymous, 300 req/min if authenticated
   await app.register(rateLimit, {
     max: async (request: FastifyRequest, _key: string) => {
+      // Exempt health check endpoint from rate limiting
+      if (request.url === '/api/health' || request.url.startsWith('/api/health?')) {
+        return Infinity; // unlimited
+      }
       if (request.headers.authorization?.startsWith('Bearer ')) {
         try {
           await request.jwtVerify();
@@ -129,7 +170,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
           url: 'https://github.com/ssdeanx/Hermes-Crypto-Radar',
         },
       },
-      servers: [{ url: 'http://localhost:9877', description: 'Development' }],
+      servers: [{ url: process.env['RADAR__SWAGGER_URL'] ?? 'http://localhost:8080', description: 'Development' }],
       components: {
         securitySchemes: {
           bearerAuth: {
@@ -167,22 +208,22 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   app.decorate('store', opts.store);
 
 
-  // ── Enterprise: Request logging hook ──
-  app.addHook('onResponse', (request, reply, done) => {
-    const statusCode = reply.statusCode;
-    const method = request.method;
-    const url = request.url;
-    const contentLength = reply.getHeader('content-length') ?? '-';
-    const responseTime = reply.elapsedTime?.toFixed(0) ?? '-';
+  // ── Enterprise: Response correlation ID header ──
+  app.addHook('onSend', async (request, reply) => {
+    reply.header('x-request-id', request.id);
+  });
 
-    if (statusCode >= 500) {
-      log.error('API request', { method, url, statusCode, contentLength, responseTime: responseTime + 'ms' });
-    } else if (statusCode >= 400) {
-      log.warn('API request', { method, url, statusCode, contentLength, responseTime: responseTime + 'ms' });
-    } else {
-      log.info('API request', { method, url, statusCode, contentLength, responseTime: responseTime + 'ms' });
-    }
-    done();
+  // ── Enterprise: Request logging hook ──
+  app.addHook('onResponse', async (request, reply) => {
+    const duration = Date.now() - (request.startTime ?? Date.now());
+    log.info('API request', {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+      statusCode: reply.statusCode,
+      durationMs: duration,
+      ip: request.ip,
+    });
   });
 
   // ── Auth / JWT helper decorator ──
@@ -201,6 +242,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   await app.register(mlRoutes);                                      // ML pipeline routes
   await app.register(cronRoutes);                                    // Secure automated cron routes
   await app.register(taskRoutes);                                    // Cloud Task handler routes
+  await app.register(actionRoutes, { prefix: '/api/actions' });      // User action proxy routes
 
   // ── Enterprise: 404 handler ──
   app.setNotFoundHandler((_request, reply) => {
@@ -246,5 +288,9 @@ declare module 'fastify' {
   interface FastifyInstance {
     store: Store;
     authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  }
+  interface FastifyRequest {
+    startTime: number;
+    id: string;
   }
 }

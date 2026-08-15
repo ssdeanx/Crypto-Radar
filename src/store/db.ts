@@ -2,13 +2,11 @@ import { DatabaseSync } from "node:sqlite";
 import type { StatementSync, SQLInputValue } from "node:sqlite";
 import { existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { createHash } from "node:crypto";
 import { BigQuery } from "@google-cloud/bigquery";
 import { SCHEMA_DDL } from "./schema.js";
 import { DataError } from "../core/errors.js";
 import { logger } from "../core/logger.js";
 import { isCloudMode } from "../core/config.js";
-import { getGlobalCache } from "../core/cache.js";
 import type {
   KlineRow,
   TickerRow,
@@ -25,7 +23,18 @@ import type {
   CrossAssetRow,
   PredictionRow,
 } from "../types.js";
-import type { EnrichedTicker, NewsMatch, TokenSignal, TokenTraceRow, TaskPayload } from "../types.js";
+import type { EnrichedTicker, NewsMatch, TokenSignal, TokenTraceRow } from "../types.js";
+import { KlineStore } from './klines.js';
+import { TickerStore } from './tickers.js';
+import { SignalStore } from './signals.js';
+import { NewsStore } from './news.js';
+import { PaperTradeStore } from './paper-trades.js';
+import { AuthStore } from './auth.js';
+import { FuturesStore } from './futures.js';
+import { MarketStore } from './market.js';
+import { PredictionStore } from './predictions.js';
+import { ScanArchiveStore } from './scan-archive.js';
+import { MetaStore } from './meta.js';
 
 const log = logger.child({ module: "store" });
 
@@ -228,6 +237,18 @@ const BQ_SCHEMAS: Record<string, BQSchemaField[]> = {
   ],
 };
 
+export interface DbHandle {
+  db: DatabaseSync | null;
+  bq: BigQuery | null;
+  projectId: string;
+  datasetId: string;
+  prep(sql: string): Stmt;
+  allRows<T>(stmt: Stmt, ...params: SQLInputValue[]): T[];
+  oneRow<T>(stmt: Stmt, ...params: SQLInputValue[]): T | undefined;
+  getTable(name: string): string;
+  syncToBucket?: () => Promise<void>;
+}
+
 export class Store {
   private db: DatabaseSync | null = null;
   private dbPath: string = "";
@@ -235,6 +256,18 @@ export class Store {
   private bq: BigQuery | null = null;
   private projectId: string = "";
   private datasetId: string = "";
+
+  klines: KlineStore;
+  tickers: TickerStore;
+  signals: SignalStore;
+  news: NewsStore;
+  paperTrades: PaperTradeStore;
+  auth: AuthStore;
+  futures: FuturesStore;
+  market: MarketStore;
+  predictions: PredictionStore;
+  scanArchive: ScanArchiveStore;
+  meta: MetaStore;
 
   constructor(opts: { path: string; createIfMissing?: boolean }) {
     const isTest = process.env.NODE_ENV === "test";
@@ -259,6 +292,34 @@ export class Store {
       this.db.exec("PRAGMA foreign_keys = ON");
       this.db.exec("PRAGMA busy_timeout = 5000");
     }
+
+    const h = this._handle();
+    this.klines = new KlineStore(h);
+    this.tickers = new TickerStore(h);
+    this.signals = new SignalStore(h);
+    this.news = new NewsStore(h);
+    this.paperTrades = new PaperTradeStore(h);
+    this.auth = new AuthStore(h);
+    this.futures = new FuturesStore(h);
+    this.market = new MarketStore(h);
+    this.predictions = new PredictionStore(h);
+    this.scanArchive = new ScanArchiveStore(h);
+    this.meta = new MetaStore(h);
+  }
+
+  private _handle(): DbHandle {
+    const self = this;
+    return {
+      get db() { return self.db; },
+      get bq() { return self.bq; },
+      projectId: this.projectId,
+      datasetId: this.datasetId,
+      prep: (sql) => this.prep(sql),
+      allRows: (stmt, ...params) => this.allRows(stmt, ...params),
+      oneRow: (stmt, ...params) => this.oneRow(stmt, ...params),
+      getTable: (name) => this.getTable(name),
+      syncToBucket: () => this.syncToBucket(),
+    };
   }
 
   async syncFromBucket(): Promise<void> {
@@ -315,16 +376,16 @@ export class Store {
       const { Storage } = await import('@google-cloud/storage');
       const storage = new Storage();
       const bucket = storage.bucket(bucketName);
-      
+
       const [files] = await bucket.getFiles({ prefix: 'ml/' });
       log.info(`Syncing ${files.length} ML files from GCS bucket ${bucketName}...`);
-      
+
       const dataDir = dirname(this.dbPath || 'data');
       for (const file of files) {
         const destPath = resolve(dataDir, file.name);
         const destDir = dirname(destPath);
         if (!existsSync(destDir)) mkdirSync(destDir, { recursive: true });
-        
+
         log.info(`Downloading GCS file ${file.name} to ${destPath}...`);
         await file.download({ destination: destPath });
       }
@@ -341,12 +402,12 @@ export class Store {
       const { Storage } = await import('@google-cloud/storage');
       const storage = new Storage();
       const bucket = storage.bucket(bucketName);
-      
+
       const dataDir = dirname(this.dbPath || 'data');
       const mlDir = resolve(dataDir, 'ml');
-      
+
       if (!existsSync(mlDir)) return;
-      
+
       const walk = (dir: string): string[] => {
         let results: string[] = [];
         const list = readdirSync(dir);
@@ -361,10 +422,10 @@ export class Store {
         }
         return results;
       };
-      
+
       const files = walk(mlDir);
       log.info(`Syncing ${files.length} ML files to GCS bucket ${bucketName}...`);
-      
+
       for (const file of files) {
         const relativePath = file.substring(dataDir.length + 1);
         log.info(`Uploading local file ${relativePath} to GCS...`);
@@ -442,1561 +503,57 @@ export class Store {
     return stmt.get(...params) as unknown as T | undefined;
   }
 
-  // ── Klines ──
-
-  async upsertKlines(rows: KlineRow[]): Promise<number> {
-    if (rows.length === 0) return 0;
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      const table = dataset.table("klines");
-      const insertRows = rows.map(r => ({
-        insertId: `${r.symbol}-${r.interval}-${r.open_time}`,
-        json: r,
-      }));
-      await table.insert(insertRows, { ignoreUnknownValues: true });
-      return rows.length;
-    } else if (this.db) {
-      const sql = `INSERT OR IGNORE INTO klines (symbol, interval, open_time, open, high, low, close, volume, quote_volume, taker_buy_vol, taker_buy_quote_vol)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-      let count = 0;
-      const stmt = this.prep(sql);
-      for (const r of rows) {
-        const result = stmt.run(
-          r.symbol,
-          r.interval,
-          r.open_time,
-          r.open,
-          r.high,
-          r.low,
-          r.close,
-          r.volume,
-          r.quote_volume,
-          r.taker_buy_vol,
-          r.taker_buy_quote_vol,
-        );
-        if (Number(result.changes) > 0) count++;
-      }
-      return count;
-    }
-    return 0;
-  }
-
-  async getKlines(
-    symbol: string,
-    interval: string,
-    opts?: {
-      from?: number;
-      to?: number;
-      limit?: number;
-      order?: "asc" | "desc";
-    },
-  ): Promise<KlineRow[]> {
-    const cacheKey = `klines:${symbol}:${interval}:${opts?.from ?? ""}:${opts?.to ?? ""}:${opts?.limit ?? ""}:${opts?.order ?? "asc"}`;
-    const cached = getGlobalCache().get<KlineRow[]>(cacheKey);
-    if (cached) return cached;
-
-    let result: KlineRow[] = [];
-
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("klines")} WHERE symbol = @symbol AND interval = @interval`;
-      const params: Record<string, unknown> = { symbol, interval };
-      if (opts?.from !== undefined) {
-        sql += " AND open_time >= @from";
-        params.from = opts.from;
-      }
-      if (opts?.to !== undefined) {
-        sql += " AND open_time <= @to";
-        params.to = opts.to;
-      }
-      sql += ` ORDER BY open_time ${opts?.order === "desc" ? "DESC" : "ASC"}`;
-      if (opts?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = opts.limit;
-      }
-      const [bqRows] = await this.bq.query({ query: sql, params });
-      result = bqRows as KlineRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM klines WHERE symbol = ? AND interval = ?";
-      const params: SQLInputValue[] = [symbol, interval];
-      if (opts?.from !== undefined) {
-        sql += " AND open_time >= ?";
-        params.push(opts.from);
-      }
-      if (opts?.to !== undefined) {
-        sql += " AND open_time <= ?";
-        params.push(opts.to);
-      }
-      sql += ` ORDER BY open_time ${opts?.order === "desc" ? "DESC" : "ASC"}`;
-      if (opts?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(opts.limit);
-      }
-      result = this.allRows<KlineRow>(this.prep(sql), ...params);
-    }
-
-    getGlobalCache().set(cacheKey, result, 60_000);
-    return result;
-  }
-
-  async latestKlineTime(symbol: string, interval: string): Promise<number | null> {
-    if (this.bq) {
-      const sql = `SELECT MAX(open_time) AS t FROM ${this.getTable("klines")} WHERE symbol = @symbol AND interval = @interval`;
-      const [rows] = await this.bq.query({ query: sql, params: { symbol, interval } });
-      const val = rows[0]?.t;
-      return val !== undefined && val !== null ? Number(val) : null;
-    } else if (this.db) {
-      const row = this.oneRow<{ t: number | null }>(
-        this.prep("SELECT MAX(open_time) AS t FROM klines WHERE symbol = ? AND interval = ?"),
-        symbol,
-        interval,
-      );
-      return row?.t ?? null;
-    }
-    return null;
-  }
-
-  async klineCount(symbol?: string, interval?: string): Promise<number> {
-    if (this.bq) {
-      let sql = `SELECT COUNT(*) AS c FROM ${this.getTable("klines")}`;
-      const params: Record<string, unknown> = {};
-      const clauses: string[] = [];
-      if (symbol) {
-        clauses.push("symbol = @symbol");
-        params.symbol = symbol;
-      }
-      if (interval) {
-        clauses.push("interval = @interval");
-        params.interval = interval;
-      }
-      if (clauses.length > 0) sql += " WHERE " + clauses.join(" AND ");
-      const [rows] = await this.bq.query({ query: sql, params });
-      return Number(rows[0]?.c ?? 0);
-    } else if (this.db) {
-      let sql = "SELECT COUNT(*) AS c FROM klines";
-      const params: SQLInputValue[] = [];
-      if (symbol) {
-        sql += " WHERE symbol = ?";
-        params.push(symbol);
-      }
-      if (interval) {
-        sql += symbol ? " AND interval = ?" : " WHERE interval = ?";
-        params.push(interval);
-      }
-      const row = this.oneRow<{ c: number }>(this.prep(sql), ...params);
-      return row?.c ?? 0;
-    }
-    return 0;
-  }
-
-  // ── Scan archive ──
-
-  async persistRun(result: {
-    tickers: EnrichedTicker[];
-    newsMatches: NewsMatch[];
-    signals: TokenSignal[];
-  }): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-
-      if (result.tickers.length > 0) {
-        const table = dataset.table("ticker_history");
-        const bqRows = result.tickers.map(t => ({
-          insertId: `${t.symbol}-${t.tsUtc}`,
-          json: {
-            symbol: t.symbol,
-            ts_utc: t.tsUtc,
-            price: t.lastPrice,
-            price_change_pct: t.priceChangePercent,
-            volume: t.volume,
-            quote_volume: t.quoteVolume,
-            rsi: t.rsi ?? null,
-            macd_hist: t.macdHistogram ?? null,
-            bb_width: t.bbWidth ?? null,
-            atr_pct: t.atrPct ?? null,
-            adx: t.adx ?? null,
-            regime: t.regime ?? null,
-            composite_score: t.compositeScore ?? null,
-          },
-        }));
-        await table.insert(bqRows, { ignoreUnknownValues: true });
-
-        // ── Populate token_traces in BigQuery ──
-        const tracesTable = dataset.table("token_traces");
-        const bqTraces = result.tickers.map(t => {
-          const matchingSignal = result.signals.find(s => s.symbol === t.symbol);
-          const traceId = sha1(`${t.symbol}-${t.tsUtc}-trace`);
-          return {
-            insertId: traceId,
-            json: {
-              trace_id: traceId,
-              run_id: t.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`,
-              symbol: t.symbol,
-              token_id: t.tokenId,
-              observed_at: t.tsUtc,
-              last_price: t.lastPrice,
-              price_change_pct: t.priceChangePercent,
-              volume: t.volume,
-              spread_pct: t.spreadPct ?? null,
-              market_cap: null,
-              composite_score: t.compositeScore ?? null,
-              direction: matchingSignal?.alerts?.[0] ?? null,
-              regime: t.regime ?? null,
-              rsi: t.rsi ?? null,
-              macd_histogram: t.macdHistogram ?? null,
-              bb_width: t.bbWidth ?? null,
-              atr_pct: t.atrPct ?? null,
-              adx: t.adx ?? null,
-              needs_analysis: 1,
-              outcome_evaluated: 0,
-              outcome_is_rugpull: 0,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }
-          };
-        });
-        await tracesTable.insert(bqTraces, { ignoreUnknownValues: true });
-      }
-
-      if (result.signals.length > 0) {
-        const table = dataset.table("signal_history");
-        const bqRows = result.signals.map(s => ({
-          insertId: `${s.symbol}-${s.timestamp}`,
-          json: {
-            symbol: s.symbol,
-            ts_utc: s.timestamp,
-            composite_score: s.compositeScore,
-            direction: s.alerts?.[0] ?? null,
-            momentum_score: s.momentumScore ?? null,
-            mean_reversion_score: s.technicalScore ?? null,
-            trend_following_score: s.newsScore ?? null,
-            regime: s.regime ?? null,
-            adx: s.adx ?? null,
-          },
-        }));
-        await table.insert(bqRows, { ignoreUnknownValues: true });
-      }
-
-      if (result.newsMatches.length > 0) {
-        const table = dataset.table("news");
-        const bqRows = result.newsMatches.map(n => {
-          const newsId = sha1(`${n.headline}|${n.source}|${n.tsUtc}`);
-          return {
-            insertId: newsId,
-            json: {
-              id: newsId,
-              symbol: n.symbol,
-              headline: n.headline,
-              description: n.description,
-              source: n.source,
-              domain: n.domain,
-              relevance: n.relevance,
-              pub_date: n.tsUtc,
-            },
-          };
-        });
-        await table.insert(bqRows, { ignoreUnknownValues: true });
-      }
-
-      // ── Publish scan.complete event via Pub/Sub ──
-      if (isCloudMode()) {
-        try {
-          const { PubSub } = await import('@google-cloud/pubsub');
-          const pubsub = new PubSub();
-          const topicName = process.env['RADAR__PUBSUB_TOPIC'] || 'crypto-radar-events';
-          const topic = pubsub.topic(topicName);
-
-          const runId = result.tickers[0]?.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`;
-          const tsUtc = result.tickers[0]?.tsUtc || new Date().toISOString();
-
-          const messageData = {
-            type: "scan.complete",
-            runId,
-            tsUtc,
-            tokenCount: result.tickers.length,
-            tickerSymbols: result.tickers.map(t => t.symbol),
-            tickerIds: result.tickers.map(t => t.tokenId),
-            signalCount: result.signals.length
-          };
-
-          const dataBuffer = Buffer.from(JSON.stringify(messageData));
-          await topic.publishMessage({ data: dataBuffer });
-          log.info('Published scan.complete event to Pub/Sub', { runId, topic: topicName });
-        } catch (pubsubErr) {
-          log.warn('Failed to publish scan.complete event to Pub/Sub', { error: String(pubsubErr) });
-        }
-      }
-    } else if (this.db) {
-      const tickerSnapshot = this.prep(`INSERT OR REPLACE INTO tickers
-        (symbol, ts_utc, price, price_change_pct, volume, quote_volume,
-         rsi, macd_hist, bb_width, atr_pct, adx, regime, composite_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-      const tickerHistory = this.prep(`INSERT OR IGNORE INTO ticker_history
-        (symbol, ts_utc, price, price_change_pct, volume, quote_volume,
-         rsi, macd_hist, bb_width, atr_pct, adx, regime, composite_score)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-      for (const t of result.tickers) {
-        const matchingSignal = result.signals.find(s => s.symbol === t.symbol);
-        const traceId = sha1(`${t.symbol}-${t.tsUtc}-trace`);
-        
-        // Populate token_traces in SQLite
-        this.prep(
-          `INSERT OR REPLACE INTO token_traces
-          (trace_id, run_id, symbol, token_id, observed_at, last_price, price_change_pct, volume, spread_pct, market_cap,
-           rsi, macd_histogram, bb_width, atr_pct, adx, regime, composite_score, direction, needs_analysis, outcome_evaluated, outcome_is_rugpull, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, ?, ?)`
-        ).run(
-          traceId,
-          t.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`,
-          t.symbol,
-          t.tokenId,
-          t.tsUtc,
-          t.lastPrice,
-          t.priceChangePercent,
-          t.volume,
-          t.spreadPct ?? null,
-          null,
-          t.rsi ?? null,
-          t.macdHistogram ?? null,
-          t.bbWidth ?? null,
-          t.atrPct ?? null,
-          t.adx ?? null,
-          t.regime ?? null,
-          t.compositeScore ?? null,
-          matchingSignal?.alerts?.[0] ?? null,
-          new Date().toISOString(),
-          new Date().toISOString()
-        );
-
-        const params: SQLInputValue[] = [
-          t.symbol,
-          t.tsUtc,
-          t.lastPrice,
-          t.priceChangePercent,
-          t.volume,
-          t.quoteVolume,
-          t.rsi ?? null,
-          t.macdHistogram ?? null,
-          t.bbWidth ?? null,
-          t.atrPct ?? null,
-          t.adx ?? null,
-          t.regime ?? null,
-          t.compositeScore ?? null,
-        ];
-        tickerSnapshot.run(...params);
-        tickerHistory.run(...params);
-      }
-
-      const signalSnapshot = this.prep(`INSERT OR REPLACE INTO signals
-        (symbol, ts_utc, composite_score, direction, momentum_score, mean_reversion_score, trend_following_score, regime, adx)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-      const signalHistory = this.prep(`INSERT OR IGNORE INTO signal_history
-        (symbol, ts_utc, composite_score, direction, momentum_score, mean_reversion_score, trend_following_score, regime, adx)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
-      for (const s of result.signals) {
-        const params: SQLInputValue[] = [
-          s.symbol,
-          s.timestamp,
-          s.compositeScore,
-          s.alerts?.[0] ?? null,
-          s.momentumScore ?? null,
-          s.technicalScore ?? null,
-          s.newsScore ?? null,
-          s.regime ?? null,
-          s.adx ?? null,
-        ];
-        signalSnapshot.run(...params);
-        signalHistory.run(...params);
-      }
-
-      const newsStmt = this.prep(`INSERT OR IGNORE INTO news
-        (id, symbol, headline, description, source, domain, relevance, pub_date)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-      for (const n of result.newsMatches) {
-        const newsId = sha1(`${n.headline}|${n.source}|${n.tsUtc}`);
-        newsStmt.run(
-          newsId,
-          n.symbol,
-          n.headline,
-          n.description,
-          n.source,
-          n.domain,
-          n.relevance,
-          n.tsUtc,
-        );
-      }
-
-      // Local fallback queue trigger for development
-      if (!isCloudMode()) {
-        const runId = result.tickers[0]?.runId || `RADAR-${Date.now().toString(36).toUpperCase()}`;
-        const tsUtc = result.tickers[0]?.tsUtc || new Date().toISOString();
-        const payload: TaskPayload = {
-          runId,
-          tsUtc,
-          tickers: result.tickers.map(t => ({ symbol: t.symbol, tokenId: t.tokenId })),
-          signals: result.signals.map(s => ({ symbol: s.symbol, compositeScore: s.compositeScore }))
-        };
-
-        import('../core/queue.js').then(({ enqueueTask }) => {
-          enqueueTask('crypto-radar-gemini-analysis', payload).catch(() => {});
-          enqueueTask('crypto-radar-paper-trade', payload).catch(() => {});
-        }).catch(() => {});
-      }
-    }
-  }
-
-  async enforceRetention(days: number): Promise<void> {
-    if (days <= 0) return;
-    if (this.bq) {
-      const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
-      const queries = [
-        `DELETE FROM ${this.getTable("ticker_history")} WHERE ts_utc < @cutoff`,
-        `DELETE FROM ${this.getTable("signal_history")} WHERE ts_utc < @cutoff`,
-        `DELETE FROM ${this.getTable("predictions")} WHERE ts < @cutoff_ts`,
-      ];
-      const cutoffTs = String(Date.now() - days * 86400_000);
-      await this.bq.query({ query: queries[0]!, params: { cutoff } });
-      await this.bq.query({ query: queries[1]!, params: { cutoff } });
-      await this.bq.query({ query: queries[2]!, params: { cutoff_ts: cutoffTs } });
-      log.info(`Retention enforced on BigQuery: deleted rows older than ${days} days`);
-    } else if (this.db) {
-      const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
-      this.prep("DELETE FROM ticker_history WHERE ts_utc < ?").run(cutoff);
-      this.prep("DELETE FROM signal_history WHERE ts_utc < ?").run(cutoff);
-      const oldTs = Date.now() - days * 86400_000;
-      this.prep("DELETE FROM predictions WHERE ts < ?").run(String(oldTs));
-      log.info(`Retention enforced: deleted rows older than ${days} days`);
-    }
-  }
-
-  async getLatestTickers(filter?: {
-    symbol?: string;
-    chain?: string;
-    limit?: number;
-  }): Promise<TickerRow[]> {
-    if (this.bq) {
-      let sql = `SELECT symbol, ts_utc, price, price_change_pct, volume, quote_volume, rsi, macd_hist, bb_width, atr_pct, adx, regime, composite_score
-                 FROM (
-                   SELECT *, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY ts_utc DESC) as rn
-                   FROM ${this.getTable("ticker_history")}
-                 )
-                 WHERE rn = 1`;
-      const params: Record<string, unknown> = {};
-      if (filter?.symbol) {
-        sql += " AND symbol = @symbol";
-        params.symbol = filter.symbol;
-      }
-      sql += " ORDER BY symbol ASC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = filter.limit;
-      } else {
-        sql += " LIMIT 200";
-        params.limit = 200;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as TickerRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM tickers";
-      const params: SQLInputValue[] = [];
-      if (filter?.symbol) {
-        sql += " WHERE symbol = ?";
-        params.push(filter.symbol);
-      }
-      sql += " ORDER BY symbol ASC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(filter.limit);
-      } else {
-        sql += " LIMIT ?";
-        params.push(200);
-      }
-      return this.allRows<TickerRow>(this.prep(sql), ...params);
-    }
-    return [];
-  }
-
-  async getSignals(filter?: {
-    symbol?: string;
-    minScore?: number;
-    direction?: string;
-    limit?: number;
-  }): Promise<SignalRow[]> {
-    if (this.bq) {
-      let sql = `SELECT symbol, ts_utc, composite_score, direction, momentum_score, mean_reversion_score, trend_following_score, regime, adx
-                 FROM (
-                   SELECT *, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY ts_utc DESC) as rn
-                   FROM ${this.getTable("signal_history")}
-                 )
-                 WHERE rn = 1`;
-      const params: Record<string, unknown> = {};
-      if (filter?.symbol) {
-        sql += " AND symbol = @symbol";
-        params.symbol = filter.symbol;
-      }
-      if (filter?.minScore !== undefined) {
-        sql += " AND composite_score >= @minScore";
-        params.minScore = filter.minScore;
-      }
-      if (filter?.direction) {
-        sql += " AND direction = @direction";
-        params.direction = filter.direction;
-      }
-      sql += " ORDER BY composite_score DESC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = filter.limit;
-      } else {
-        sql += " LIMIT 200";
-        params.limit = 200;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as SignalRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM signals WHERE 1=1";
-      const params: SQLInputValue[] = [];
-      if (filter?.symbol) {
-        sql += " AND symbol = ?";
-        params.push(filter.symbol);
-      }
-      if (filter?.minScore !== undefined) {
-        sql += " AND composite_score >= ?";
-        params.push(filter.minScore);
-      }
-      if (filter?.direction) {
-        sql += " AND direction = ?";
-        params.push(filter.direction);
-      }
-      sql += " ORDER BY composite_score DESC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(filter.limit);
-      } else {
-        sql += " LIMIT ?";
-        params.push(200);
-      }
-      return this.allRows<SignalRow>(this.prep(sql), ...params);
-    }
-    return [];
-  }
-
-  async getSignalHistory(
-    symbol: string,
-    opts?: { from?: string; limit?: number; order?: "asc" | "desc" },
-  ): Promise<SignalRow[]> {
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("signal_history")} WHERE symbol = @symbol`;
-      const params: Record<string, unknown> = { symbol };
-      if (opts?.from) {
-        sql += " AND ts_utc >= @from";
-        params.from = opts.from;
-      }
-      sql += ` ORDER BY ts_utc ${opts?.order === "asc" ? "ASC" : "DESC"}`;
-      if (opts?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = opts.limit;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as SignalRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM signal_history WHERE symbol = ?";
-      const params: SQLInputValue[] = [symbol];
-      if (opts?.from) {
-        sql += " AND ts_utc >= ?";
-        params.push(opts.from);
-      }
-      sql += ` ORDER BY ts_utc ${opts?.order === "asc" ? "ASC" : "DESC"}`;
-      if (opts?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(opts.limit);
-      }
-      return this.allRows<SignalRow>(this.prep(sql), ...params);
-    }
-    return [];
-  }
-
-  async getTickerHistory(
-    symbol: string,
-    opts?: { from?: string; limit?: number; order?: "asc" | "desc" },
-  ): Promise<TickerRow[]> {
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("ticker_history")} WHERE symbol = @symbol`;
-      const params: Record<string, unknown> = { symbol };
-      if (opts?.from) {
-        sql += " AND ts_utc >= @from";
-        params.from = opts.from;
-      }
-      sql += ` ORDER BY ts_utc ${opts?.order === "asc" ? "ASC" : "DESC"}`;
-      if (opts?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = opts.limit;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as TickerRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM ticker_history WHERE symbol = ?";
-      const params: SQLInputValue[] = [symbol];
-      if (opts?.from) {
-        sql += " AND ts_utc >= ?";
-        params.push(opts.from);
-      }
-      sql += ` ORDER BY ts_utc ${opts?.order === "asc" ? "ASC" : "DESC"}`;
-      if (opts?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(opts.limit);
-      }
-      return this.allRows<TickerRow>(this.prep(sql), ...params);
-    }
-    return [];
-  }
-
-  async getNews(filter?: { symbol?: string; limit?: number }): Promise<NewsRow[]> {
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("news")}`;
-      const params: Record<string, unknown> = {};
-      if (filter?.symbol) {
-        sql += " WHERE symbol = @symbol";
-        params.symbol = filter.symbol;
-      }
-      sql += " ORDER BY pub_date DESC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = filter.limit;
-      } else {
-        sql += " LIMIT 50";
-        params.limit = 50;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as NewsRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM news";
-      const params: SQLInputValue[] = [];
-      if (filter?.symbol) {
-        sql += " WHERE symbol = ?";
-        params.push(filter.symbol);
-      }
-      sql += " ORDER BY pub_date DESC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(filter.limit);
-      } else {
-        sql += " LIMIT ?";
-        params.push(50);
-      }
-      return this.allRows<NewsRow>(this.prep(sql), ...params);
-    }
-    return [];
-  }
-
-  // ── Paper trading ──
-
-  async upsertPaperTrade(t: PaperTradeRow): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      const table = dataset.table("paper_trades");
-      await table.insert([{
-        insertId: t.id,
-        json: t,
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(
-        `INSERT OR REPLACE INTO paper_trades
-        (id, profile, symbol, side, entry_price, entry_time, quantity, exit_price, exit_time, pnl, fees, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        t.id,
-        t.profile,
-        t.symbol,
-        t.side,
-        t.entry_price,
-        t.entry_time,
-        t.quantity,
-        t.exit_price,
-        t.exit_time,
-        t.pnl,
-        t.fees,
-        t.status,
-      );
-    }
-  }
-
-  async getPaperTrades(profile: string, status?: "open" | "closed"): Promise<PaperTradeRow[]> {
-    if (this.bq) {
-      let sql = `SELECT id, profile, symbol, side, entry_price, entry_time, quantity, exit_price, exit_time, pnl, fees, status
-                 FROM (
-                   SELECT *, ROW_NUMBER() OVER (PARTITION BY id ORDER BY COALESCE(exit_time, entry_time) DESC) as rn
-                   FROM ${this.getTable("paper_trades")}
-                   WHERE profile = @profile
-                 )
-                 WHERE rn = 1`;
-      const params: Record<string, unknown> = { profile };
-      if (status) {
-        sql += " AND status = @status";
-        params.status = status;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as PaperTradeRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM paper_trades WHERE profile = ?";
-      const params: SQLInputValue[] = [profile];
-      if (status) {
-        sql += " AND status = ?";
-        params.push(status);
-      }
-      return this.allRows<PaperTradeRow>(this.prep(sql), ...params);
-    }
-    return [];
-  }
-
-  // ── Users / Auth ──
-
-  async getUserByEmail(email: string): Promise<UserRow | undefined> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("users")} WHERE email = @email LIMIT 1`;
-      const [rows] = await this.bq.query({ query: sql, params: { email } });
-      return rows[0] as UserRow | undefined;
-    } else if (this.db) {
-      return this.oneRow<UserRow>(
-        this.prep("SELECT * FROM users WHERE email = ?"),
-        email,
-      );
-    }
-    return undefined;
-  }
-
-  async getUserById(id: string): Promise<UserRow | undefined> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("users")} WHERE id = @id LIMIT 1`;
-      const [rows] = await this.bq.query({ query: sql, params: { id } });
-      return rows[0] as UserRow | undefined;
-    } else if (this.db) {
-      return this.oneRow<UserRow>(this.prep("SELECT * FROM users WHERE id = ?"), id);
-    }
-    return undefined;
-  }
-
-  async createUser(user: UserRow): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("users").insert([{
-        insertId: user.id,
-        json: user,
-      }]);
-    } else if (this.db) {
-      this.prep(
-        "INSERT INTO users (id, email, password_hash, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      ).run(
-        user.id,
-        user.email,
-        user.password_hash,
-        user.name,
-        user.role,
-        user.created_at,
-        user.updated_at,
-      );
-    }
-  }
-
-  async updateUser(
-    id: string,
-    fields: Partial<Pick<UserRow, "name" | "role" | "password_hash">>,
-  ): Promise<void> {
-    if (this.bq) {
-      const sets: string[] = [];
-      const params: Record<string, unknown> = { id };
-      if (fields.name !== undefined) {
-        sets.push("name = @name");
-        params.name = fields.name;
-      }
-      if (fields.role !== undefined) {
-        sets.push("role = @role");
-        params.role = fields.role;
-      }
-      if (fields.password_hash !== undefined) {
-        sets.push("password_hash = @password_hash");
-        params.password_hash = fields.password_hash;
-      }
-      if (sets.length === 0) return;
-      sets.push("updated_at = CURRENT_TIMESTAMP()");
-      const sql = `UPDATE ${this.getTable("users")} SET ${sets.join(", ")} WHERE id = @id`;
-      await this.bq.query({ query: sql, params });
-    } else if (this.db) {
-      const sets: string[] = [];
-      const params: SQLInputValue[] = [];
-      if (fields.name !== undefined) {
-        sets.push("name = ?");
-        params.push(fields.name);
-      }
-      if (fields.role !== undefined) {
-        sets.push("role = ?");
-        params.push(fields.role);
-      }
-      if (fields.password_hash !== undefined) {
-        sets.push("password_hash = ?");
-        params.push(fields.password_hash);
-      }
-      if (sets.length === 0) return;
-      sets.push("updated_at = datetime('now')");
-      this.prep(`UPDATE users SET ${sets.join(", ")} WHERE id = ?`).run(
-        ...params,
-        id,
-      );
-    }
-  }
-
-  // ── Futures sources ──
-
-  async upsertFunding(rows: FundingRow[]): Promise<number> {
-    if (rows.length === 0) return 0;
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      const bqRows = rows.map(r => ({
-        insertId: `${r.symbol}-${r.ts}`,
-        json: r,
-      }));
-      await dataset.table("futures_funding").insert(bqRows, { ignoreUnknownValues: true });
-      return rows.length;
-    } else if (this.db) {
-      const sql =
-        "INSERT OR IGNORE INTO futures_funding (symbol, ts, rate) VALUES (?, ?, ?)";
-      let count = 0;
-      const stmt = this.prep(sql);
-      for (const r of rows) {
-        if (Number(stmt.run(r.symbol, r.ts, r.rate).changes) > 0) count++;
-      }
-      return count;
-    }
-    return 0;
-  }
-
-  async upsertOpenInterest(rows: OIRow[]): Promise<number> {
-    if (rows.length === 0) return 0;
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      const bqRows = rows.map(r => ({
-        insertId: `${r.symbol}-${r.ts}`,
-        json: r,
-      }));
-      await dataset.table("futures_oi").insert(bqRows, { ignoreUnknownValues: true });
-      return rows.length;
-    } else if (this.db) {
-      const sql =
-        "INSERT OR IGNORE INTO futures_oi (symbol, ts, open_interest) VALUES (?, ?, ?)";
-      let count = 0;
-      const stmt = this.prep(sql);
-      for (const r of rows) {
-        if (Number(stmt.run(r.symbol, r.ts, r.open_interest).changes) > 0)
-          count++;
-      }
-      return count;
-    }
-    return 0;
-  }
-
-  async upsertLsRatio(rows: LsRatioRow[]): Promise<number> {
-    if (rows.length === 0) return 0;
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      const bqRows = rows.map(r => ({
-        insertId: `${r.symbol}-${r.ts}`,
-        json: r,
-      }));
-      await dataset.table("futures_ls_ratio").insert(bqRows, { ignoreUnknownValues: true });
-      return rows.length;
-    } else if (this.db) {
-      const sql =
-        "INSERT OR IGNORE INTO futures_ls_ratio (symbol, ts, long_account, short_account, long_position, short_position) VALUES (?, ?, ?, ?, ?, ?)";
-      let count = 0;
-      const stmt = this.prep(sql);
-      for (const r of rows) {
-        if (
-          Number(
-            stmt.run(
-              r.symbol,
-              r.ts,
-              r.long_account,
-              r.short_account,
-              r.long_position,
-              r.short_position,
-            ).changes,
-          ) > 0
-        )
-          count++;
-      }
-      return count;
-    }
-    return 0;
-  }
-
-  async upsertLiquidations(rows: LiquidationRow[]): Promise<number> {
-    if (rows.length === 0) return 0;
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      const bqRows = rows.map(r => ({
-        insertId: r.id,
-        json: r,
-      }));
-      await dataset.table("liquidations").insert(bqRows, { ignoreUnknownValues: true });
-      return rows.length;
-    } else if (this.db) {
-      const sql =
-        "INSERT OR IGNORE INTO liquidations (id, symbol, ts, side, price, qty, usd) VALUES (?, ?, ?, ?, ?, ?, ?)";
-      let count = 0;
-      const stmt = this.prep(sql);
-      for (const r of rows) {
-        if (
-          Number(
-            stmt.run(r.id, r.symbol, r.ts, r.side, r.price, r.qty, r.usd)
-              .changes,
-          ) > 0
-        )
-          count++;
-      }
-      return count;
-    }
-    return 0;
-  }
-
-  async getFunding(symbol: string, limit = 50): Promise<FundingRow[]> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("futures_funding")} WHERE symbol = @symbol ORDER BY ts DESC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { symbol, limit } });
-      return rows as FundingRow[];
-    } else if (this.db) {
-      return this.allRows<FundingRow>(
-        this.prep(
-          "SELECT * FROM futures_funding WHERE symbol = ? ORDER BY ts DESC LIMIT ?",
-        ),
-        symbol,
-        limit,
-      );
-    }
-    return [];
-  }
-
-  async getOpenInterest(symbol: string, limit = 50): Promise<OIRow[]> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("futures_oi")} WHERE symbol = @symbol ORDER BY ts DESC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { symbol, limit } });
-      return rows as OIRow[];
-    } else if (this.db) {
-      return this.allRows<OIRow>(
-        this.prep(
-          "SELECT * FROM futures_oi WHERE symbol = ? ORDER BY ts DESC LIMIT ?",
-        ),
-        symbol,
-        limit,
-      );
-    }
-    return [];
-  }
-
-  async getLsRatio(symbol: string, limit = 50): Promise<LsRatioRow[]> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("futures_ls_ratio")} WHERE symbol = @symbol ORDER BY ts DESC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { symbol, limit } });
-      return rows as LsRatioRow[];
-    } else if (this.db) {
-      return this.allRows<LsRatioRow>(
-        this.prep(
-          "SELECT * FROM futures_ls_ratio WHERE symbol = ? ORDER BY ts DESC LIMIT ?",
-        ),
-        symbol,
-        limit,
-      );
-    }
-    return [];
-  }
-
-  async getLiquidations(symbol?: string, limit = 50): Promise<LiquidationRow[]> {
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("liquidations")}`;
-      const params: Record<string, unknown> = { limit };
-      if (symbol) {
-        sql += " WHERE symbol = @symbol";
-        params.symbol = symbol;
-      }
-      sql += " ORDER BY ts DESC LIMIT @limit";
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as LiquidationRow[];
-    } else if (this.db) {
-      if (symbol) {
-        return this.allRows<LiquidationRow>(
-          this.prep(
-            "SELECT * FROM liquidations WHERE symbol = ? ORDER BY ts DESC LIMIT ?",
-          ),
-          symbol,
-          limit,
-        );
-      }
-      return this.allRows<LiquidationRow>(
-        this.prep("SELECT * FROM liquidations ORDER BY ts DESC LIMIT ?"),
-        limit,
-      );
-    }
-    return [];
-  }
-
-  // ── Fear & Greed ──
-
-  async upsertFearGreed(row: FearGreedRow): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("fear_greed").insert([{
-        insertId: String(row.ts),
-        json: row,
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(
-        "INSERT OR REPLACE INTO fear_greed (ts, value, classification) VALUES (?, ?, ?)",
-      ).run(row.ts, row.value, row.classification);
-    }
-  }
-
-  async getFearGreed(limit = 30): Promise<FearGreedRow[]> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("fear_greed")} ORDER BY ts DESC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { limit } });
-      return rows as FearGreedRow[];
-    } else if (this.db) {
-      return this.allRows<FearGreedRow>(
-        this.prep("SELECT * FROM fear_greed ORDER BY ts DESC LIMIT ?"),
-        limit,
-      );
-    }
-    return [];
-  }
-
-  // ── Order Book ──
-
-  async upsertOrderBook(row: OrderBookRow): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("orderbook").insert([{
-        insertId: `${row.symbol}-${row.ts}`,
-        json: row,
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(
-        "INSERT OR REPLACE INTO orderbook (symbol, ts, spread_pct, imbalance, bids, asks) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run(
-        row.symbol,
-        row.ts,
-        row.spread_pct,
-        row.imbalance,
-        row.bids,
-        row.asks,
-      );
-    }
-  }
-
-  async getOrderBook(symbol: string, limit = 50): Promise<OrderBookRow[]> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("orderbook")} WHERE symbol = @symbol ORDER BY ts DESC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { symbol, limit } });
-      return rows as OrderBookRow[];
-    } else if (this.db) {
-      return this.allRows<OrderBookRow>(
-        this.prep(
-          "SELECT * FROM orderbook WHERE symbol = ? ORDER BY ts DESC LIMIT ?",
-        ),
-        symbol,
-        limit,
-      );
-    }
-    return [];
-  }
-
-  // ── Cross Asset ──
-
-  async upsertCrossAsset(row: CrossAssetRow): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("cross_asset").insert([{
-        insertId: String(row.ts),
-        json: row,
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(
-        "INSERT OR REPLACE INTO cross_asset (ts, btc_dominance, eth_dominance, total_mcap, total_mcap_change_24h, market_cap_percentage_json) VALUES (?, ?, ?, ?, ?, ?)",
-      ).run(
-        row.ts,
-        row.btc_dominance,
-        row.eth_dominance,
-        row.total_mcap,
-        row.total_mcap_change_24h,
-        row.market_cap_percentage_json,
-      );
-    }
-  }
-
-  async getCrossAsset(limit = 50): Promise<CrossAssetRow[]> {
-    const cacheKey = `cross_asset:${limit}`;
-    const cached = getGlobalCache().get<CrossAssetRow[]>(cacheKey);
-    if (cached) return cached;
-
-    let result: CrossAssetRow[] = [];
-
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("cross_asset")} ORDER BY ts DESC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { limit } });
-      result = rows as CrossAssetRow[];
-    } else if (this.db) {
-      result = this.allRows<CrossAssetRow>(
-        this.prep("SELECT * FROM cross_asset ORDER BY ts DESC LIMIT ?"),
-        limit,
-      );
-    }
-
-    getGlobalCache().set(cacheKey, result, 60_000);
-    return result;
-  }
-
-  // ── Predictions ──
-
-  async upsertPrediction(row: PredictionRow & { reasoning?: string; outcome?: number; outcome_classification?: string }): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("predictions").insert([{
-        insertId: row.id,
-        json: {
-          id: row.id,
-          symbol: row.symbol,
-          ts: row.ts,
-          direction: row.direction,
-          confidence: row.confidence,
-          model_id: row.model_id,
-          horizon: row.horizon,
-          ml_score: row.ml_score ?? null,
-          features_hash: row.features_hash ?? null,
-          reasoning: row.reasoning ?? null,
-          outcome: row.outcome ?? null,
-          outcome_classification: row.outcome_classification ?? null,
-        },
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(
-        `INSERT OR REPLACE INTO predictions
-        (id, symbol, ts, direction, confidence, model_id, horizon, ml_score, features_hash, reasoning, outcome, outcome_classification)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(
-        row.id,
-        row.symbol,
-        row.ts,
-        row.direction,
-        row.confidence,
-        row.model_id,
-        row.horizon,
-        row.ml_score ?? null,
-        row.features_hash ?? null,
-        row.reasoning ?? null,
-        row.outcome ?? null,
-        row.outcome_classification ?? null,
-      );
-      if (isCloudMode()) {
-        await this.syncToBucket();
-      }
-    }
-  }
-
-  async persistTrace(row: TokenTraceRow): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("token_traces").insert([{
-        insertId: row.trace_id,
-        json: {
-          trace_id: row.trace_id,
-          run_id: row.run_id,
-          symbol: row.symbol,
-          token_id: row.token_id,
-          observed_at: row.observed_at,
-          outcome_at: row.outcome_at ?? null,
-          last_price: row.last_price ?? null,
-          price_change_pct: row.price_change_pct ?? null,
-          volume: row.volume ?? null,
-          spread_pct: row.spread_pct ?? null,
-          market_cap: row.market_cap ?? null,
-          composite_score: row.composite_score ?? null,
-          direction: row.direction ?? null,
-          regime: row.regime ?? null,
-          rsi: row.rsi ?? null,
-          macd_histogram: row.macd_histogram ?? null,
-          bb_width: row.bb_width ?? null,
-          atr_pct: row.atr_pct ?? null,
-          adx: row.adx ?? null,
-          analysis_text: row.analysis_text ?? null,
-          prediction_direction: row.prediction_direction ?? null,
-          prediction_confidence: row.prediction_confidence ?? null,
-          gemini_raw: row.gemini_raw ?? null,
-          needs_analysis: row.needs_analysis ?? 1,
-          analyzed_at: row.analyzed_at ?? null,
-          outcome_price: row.outcome_price ?? null,
-          outcome_change_pct: row.outcome_change_pct ?? null,
-          outcome_high: row.outcome_high ?? null,
-          outcome_low: row.outcome_low ?? null,
-          outcome_volume: row.outcome_volume ?? null,
-          outcome_is_rugpull: row.outcome_is_rugpull ?? 0,
-          outcome_pnl_pct: row.outcome_pnl_pct ?? null,
-          outcome_classification: row.outcome_classification ?? null,
-          outcome_evaluated: row.outcome_evaluated ?? 0,
-          outcome_evaluated_at: row.outcome_evaluated_at ?? null,
-          created_at: row.created_at || new Date().toISOString(),
-          updated_at: row.updated_at || new Date().toISOString(),
-        },
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(
-        `INSERT OR REPLACE INTO token_traces
-        (trace_id, run_id, symbol, token_id, observed_at, outcome_at, last_price, price_change_pct, volume, spread_pct,
-         market_cap, composite_score, direction, regime, rsi, macd_histogram, bb_width, atr_pct, adx,
-         analysis_text, prediction_direction, prediction_confidence, gemini_raw, needs_analysis, analyzed_at,
-         outcome_price, outcome_change_pct, outcome_high, outcome_low, outcome_volume, outcome_is_rugpull,
-         outcome_pnl_pct, outcome_classification, outcome_evaluated, outcome_evaluated_at, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      ).run(
-        row.trace_id,
-        row.run_id,
-        row.symbol,
-        row.token_id ?? null,
-        row.observed_at,
-        row.outcome_at ?? null,
-        row.last_price ?? null,
-        row.price_change_pct ?? null,
-        row.volume ?? null,
-        row.spread_pct ?? null,
-        row.market_cap ?? null,
-        row.composite_score ?? null,
-        row.direction ?? null,
-        row.regime ?? null,
-        row.rsi ?? null,
-        row.macd_histogram ?? null,
-        row.bb_width ?? null,
-        row.atr_pct ?? null,
-        row.adx ?? null,
-        row.analysis_text ?? null,
-        row.prediction_direction ?? null,
-        row.prediction_confidence ?? null,
-        row.gemini_raw ?? null,
-        row.needs_analysis ?? 1,
-        row.analyzed_at ?? null,
-        row.outcome_price ?? null,
-        row.outcome_change_pct ?? null,
-        row.outcome_high ?? null,
-        row.outcome_low ?? null,
-        row.outcome_volume ?? null,
-        row.outcome_is_rugpull ?? 0,
-        row.outcome_pnl_pct ?? null,
-        row.outcome_classification ?? null,
-        row.outcome_evaluated ?? 0,
-        row.outcome_evaluated_at ?? null,
-        row.created_at || new Date().toISOString(),
-        row.updated_at || new Date().toISOString()
-      );
-      if (isCloudMode()) {
-        await this.syncToBucket();
-      }
-    }
-  }
-
-  async updateTrace(traceId: string, updates: Record<string, unknown>): Promise<void> {
-    const keys = Object.keys(updates);
-    if (keys.length === 0) return;
-    
-    updates.updated_at = new Date().toISOString();
-    const updatedKeys = Object.keys(updates);
-
-    if (this.bq) {
-      const setClause = updatedKeys.map(k => `${k} = @${k}`).join(", ");
-      const query = `UPDATE ${this.getTable("token_traces")} SET ${setClause} WHERE trace_id = @traceId`;
-      await this.bq.query({
-        query,
-        params: { ...updates, traceId },
-      });
-    } else if (this.db) {
-      const setClause = updatedKeys.map(k => `${k} = ?`).join(", ");
-      const query = `UPDATE token_traces SET ${setClause} WHERE trace_id = ?`;
-      const params = updatedKeys.map(k => updates[k] as SQLInputValue);
-      params.push(traceId);
-      this.prep(query).run(...params);
-      if (isCloudMode()) {
-        await this.syncToBucket();
-      }
-    }
-  }
-
-  // ── Token Trace Queries ──
-
-  /**
-   * Fetch token_traces rows where needs_analysis = 1 (pending LLM analysis).
-   * Used by the /api/tasks/gemini-analyze task handler.
-   */
-  async getTracesNeedingAnalysis(limit = 50): Promise<TokenTraceRow[]> {
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("token_traces")} WHERE needs_analysis = 1 ORDER BY observed_at ASC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { limit } });
-      return rows as TokenTraceRow[];
-    } else if (this.db) {
-      return this.queryAll<TokenTraceRow>(
-        `SELECT * FROM token_traces WHERE needs_analysis = 1 ORDER BY observed_at ASC LIMIT ?`,
-        [limit],
-      );
-    }
-    return [];
-  }
-
-  /**
-   * Fetch token_traces where outcome_evaluated = 0 and the 24h window has passed.
-   * Used by the /api/tasks/evaluate-outcomes task handler.
-   */
-  async getTracesNeedingOutcome(limit = 100): Promise<TokenTraceRow[]> {
-    const cutoffMs = Date.now() - 24 * 60 * 60 * 1000; // 24h ago
-    const cutoffIso = new Date(cutoffMs).toISOString();
-    if (this.bq) {
-      const sql = `SELECT * FROM ${this.getTable("token_traces")} WHERE outcome_evaluated = 0 AND observed_at < @cutoff ORDER BY observed_at ASC LIMIT @limit`;
-      const [rows] = await this.bq.query({ query: sql, params: { cutoff: cutoffIso, limit } });
-      return rows as TokenTraceRow[];
-    } else if (this.db) {
-      return this.queryAll<TokenTraceRow>(
-        `SELECT * FROM token_traces WHERE outcome_evaluated = 0 AND observed_at < ? ORDER BY observed_at ASC LIMIT ?`,
-        [cutoffIso, limit],
-      );
-    }
-    return [];
-  }
-
-  async getPredictions(filter?: {
-    symbol?: string;
-    model_id?: string;
-    limit?: number;
-    minConfidence?: number;
-  }): Promise<PredictionRow[]> {
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("predictions")} WHERE 1=1`;
-      const params: Record<string, unknown> = {};
-      if (filter?.symbol) {
-        sql += " AND symbol = @symbol";
-        params.symbol = filter.symbol;
-      }
-      if (filter?.model_id) {
-        sql += " AND model_id = @model_id";
-        params.model_id = filter.model_id;
-      }
-      if (filter?.minConfidence !== undefined) {
-        sql += " AND confidence >= @minConfidence";
-        params.minConfidence = filter.minConfidence;
-      }
-      sql += " ORDER BY ts DESC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = filter.limit;
-      } else {
-        sql += " LIMIT 200";
-        params.limit = 200;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as PredictionRow[];
-    } else if (this.db) {
-      let sql = "SELECT * FROM predictions WHERE 1=1";
-      const params: SQLInputValue[] = [];
-      if (filter?.symbol) {
-        sql += " AND symbol = ?";
-        params.push(filter.symbol);
-      }
-      if (filter?.model_id) {
-        sql += " AND model_id = ?";
-        params.push(filter.model_id);
-      }
-      if (filter?.minConfidence !== undefined) {
-        sql += " AND confidence >= ?";
-        params.push(filter.minConfidence);
-      }
-      sql += " ORDER BY ts DESC";
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(filter.limit);
-      } else {
-        sql += " LIMIT ?";
-        params.push(200);
-      }
-      return this.queryAll<PredictionRow>(sql, params);
-    }
-    return [];
-  }
-
-  async prunePredictions(olderThanMs: number): Promise<number> {
-    if (this.bq) {
-      const cutoff = String(olderThanMs);
-      const sql = `DELETE FROM ${this.getTable("predictions")} WHERE CAST(ts AS INT64) < @cutoff`;
-      await this.bq.query({ query: sql, params: { cutoff } });
-      return 1;
-    } else if (this.db) {
-      const cutoff = olderThanMs.toString();
-      const result = this.prep(
-        "DELETE FROM predictions WHERE CAST(ts AS INTEGER) < ?",
-      ).run(cutoff);
-      return Number(result.changes);
-    }
-    return 0;
-  }
-
-  // ── Drift Events ──
-
-  async insertDriftEvent(event: {
-    id: string;
-    ts: string;
-    model_id: string;
-    detector: string;
-    index: number;
-    symbol?: string;
-    confidence?: number;
-    message: string;
-  }): Promise<void> {
-    if (this.bq) {
-      const dataset = this.bq.dataset(this.datasetId);
-      await dataset.table("drift_events").insert([{
-        insertId: event.id,
-        json: event,
-      }], { ignoreUnknownValues: true });
-    } else if (this.db) {
-      this.prep(`
-        INSERT INTO drift_events (id, ts, model_id, detector, "index", symbol, confidence, message)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        event.id,
-        event.ts,
-        event.model_id,
-        event.detector,
-        event.index,
-        event.symbol ?? null,
-        event.confidence ?? null,
-        event.message,
-      );
-    }
-  }
-
-  async getDriftEvents(filter?: { limit?: number }): Promise<Array<{
-    id: string;
-    ts: string;
-    model_id: string;
-    detector: string;
-    symbol?: string;
-    confidence?: number;
-    message: string;
-  }>> {
-    if (this.bq) {
-      let sql = `SELECT * FROM ${this.getTable("drift_events")} ORDER BY ts DESC`;
-      const params: Record<string, unknown> = {};
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT @limit";
-        params.limit = filter.limit;
-      } else {
-        sql += " LIMIT 50";
-        params.limit = 50;
-      }
-      const [rows] = await this.bq.query({ query: sql, params });
-      return rows as Array<{
-        id: string;
-        ts: string;
-        model_id: string;
-        detector: string;
-        symbol?: string;
-        confidence?: number;
-        message: string;
-      }>;
-    } else if (this.db) {
-      let sql = "SELECT * FROM drift_events ORDER BY ts DESC";
-      const params: SQLInputValue[] = [];
-      if (filter?.limit !== undefined) {
-        sql += " LIMIT ?";
-        params.push(filter.limit);
-      } else {
-        sql += " LIMIT ?";
-        params.push(50);
-      }
-      return this.queryAll(sql, params);
-    }
-    return [];
-  }
-
-  // ── Meta ──
-
-  async stats(): Promise<Record<string, number>> {
-    if (!this.db && !this.bq) {
-      throw new Error("Database not initialized or closed");
-    }
-    if (this.db && !this.db.open) {
-      throw new Error("Database is closed");
-    }
-
-    const tables = [
-      "klines",
-      "ticker_history",
-      "signal_history",
-      "news",
-      "paper_trades",
-      "futures_funding",
-      "futures_oi",
-      "futures_ls_ratio",
-      "liquidations",
-      "fear_greed",
-      "orderbook",
-      "cross_asset",
-      "predictions",
-      "drift_events",
-    ];
-    const result: Record<string, number> = {};
-
-    if (this.bq) {
-      for (const t of tables) {
-        try {
-          const sql = `SELECT COUNT(*) AS c FROM ${this.getTable(t)}`;
-          const [rows] = await this.bq.query({ query: sql });
-          result[t] = Number(rows[0]?.c ?? 0);
-        } catch {
-          result[t] = 0;
-        }
-      }
-      result["tickers"] = result["ticker_history"] ?? 0;
-      result["signals"] = result["signal_history"] ?? 0;
-    } else if (this.db) {
-      for (const t of tables) {
-        try {
-          const row = this.oneRow<{ c: number }>(
-            this.prep(`SELECT COUNT(*) AS c FROM ${t}`),
-          );
-          result[t] = row?.c ?? 0;
-        } catch {
-          result[t] = 0;
-        }
-      }
-      try {
-        result["tickers"] = this.oneRow<{ c: number }>(this.prep(`SELECT COUNT(*) AS c FROM tickers`))?.c ?? 0;
-        result["signals"] = this.oneRow<{ c: number }>(this.prep(`SELECT COUNT(*) AS c FROM signals`))?.c ?? 0;
-      } catch {
-        result["tickers"] = 0;
-        result["signals"] = 0;
-      }
-    }
-    return result;
-  }
-
-  private queryAll<T>(sql: string, params: SQLInputValue[]): T[] {
-    if (!this.db) throw new Error("SQLite not initialized");
-    const paramIdx = { current: 0 };
-    const built = sql.replace(/\?/g, () =>
-      Store.esc(params[paramIdx.current++]),
-    );
-    return this.db.prepare(built).all() as unknown as T[];
-  }
-
-  private static esc(val: unknown): string {
-    if (val === null || val === undefined) return "NULL";
-    if (typeof val === "string") return `'${val.replace(/'/g, "''")}'`;
-    if (typeof val === "number" && Number.isFinite(val)) return String(val);
-    if (typeof val === "boolean") return val ? "1" : "0";
-    return `'${String(val)}'`;
-  }
-}
-
-function sha1(input: string): string {
-  return createHash("sha1").update(input).digest("hex");
+  // ── Delegation methods ──
+
+  async upsertKlines(rows: KlineRow[]): Promise<number> { return this.klines.upsertKlines(rows); }
+  async getKlines(symbol: string, interval: string, opts?: { from?: number; to?: number; limit?: number; order?: "asc" | "desc" }): Promise<KlineRow[]> { return this.klines.getKlines(symbol, interval, opts); }
+  async latestKlineTime(symbol: string, interval: string): Promise<number | null> { return this.klines.latestKlineTime(symbol, interval); }
+  async klineCount(symbol?: string, interval?: string): Promise<number> { return this.klines.klineCount(symbol, interval); }
+
+  async getLatestTickers(filter?: { symbol?: string; chain?: string; limit?: number }): Promise<TickerRow[]> { return this.tickers.getLatestTickers(filter); }
+  async getTickerHistory(symbol: string, opts?: { from?: string; limit?: number; order?: "asc" | "desc" }): Promise<TickerRow[]> { return this.tickers.getTickerHistory(symbol, opts); }
+
+  async getSignals(filter?: { symbol?: string; minScore?: number; direction?: string; limit?: number }): Promise<SignalRow[]> { return this.signals.getSignals(filter); }
+  async getSignalHistory(symbol: string, opts?: { from?: string; limit?: number; order?: "asc" | "desc" }): Promise<SignalRow[]> { return this.signals.getSignalHistory(symbol, opts); }
+
+  async getNews(filter?: { symbol?: string; limit?: number }): Promise<NewsRow[]> { return this.news.getNews(filter); }
+
+  async upsertPaperTrade(t: PaperTradeRow): Promise<void> { return this.paperTrades.upsertPaperTrade(t); }
+  async getPaperTrades(profile: string, status?: "open" | "closed"): Promise<PaperTradeRow[]> { return this.paperTrades.getPaperTrades(profile, status); }
+
+  async getUserByEmail(email: string): Promise<UserRow | undefined> { return this.auth.getUserByEmail(email); }
+  async getUserById(id: string): Promise<UserRow | undefined> { return this.auth.getUserById(id); }
+  async createUser(user: UserRow): Promise<void> { return this.auth.createUser(user); }
+  async updateUser(id: string, fields: Partial<Pick<UserRow, "name" | "role" | "password_hash">>): Promise<void> { return this.auth.updateUser(id, fields); }
+
+  async upsertFunding(rows: FundingRow[]): Promise<number> { return this.futures.upsertFunding(rows); }
+  async upsertOpenInterest(rows: OIRow[]): Promise<number> { return this.futures.upsertOpenInterest(rows); }
+  async upsertLsRatio(rows: LsRatioRow[]): Promise<number> { return this.futures.upsertLsRatio(rows); }
+  async upsertLiquidations(rows: LiquidationRow[]): Promise<number> { return this.futures.upsertLiquidations(rows); }
+  async getFunding(symbol: string, limit = 50): Promise<FundingRow[]> { return this.futures.getFunding(symbol, limit); }
+  async getOpenInterest(symbol: string, limit = 50): Promise<OIRow[]> { return this.futures.getOpenInterest(symbol, limit); }
+  async getLsRatio(symbol: string, limit = 50): Promise<LsRatioRow[]> { return this.futures.getLsRatio(symbol, limit); }
+  async getLiquidations(symbol?: string, limit = 50): Promise<LiquidationRow[]> { return this.futures.getLiquidations(symbol, limit); }
+
+  async upsertFearGreed(row: FearGreedRow): Promise<void> { return this.market.upsertFearGreed(row); }
+  async getFearGreed(limit = 30): Promise<FearGreedRow[]> { return this.market.getFearGreed(limit); }
+  async upsertOrderBook(row: OrderBookRow): Promise<void> { return this.market.upsertOrderBook(row); }
+  async getOrderBook(symbol: string, limit = 50): Promise<OrderBookRow[]> { return this.market.getOrderBook(symbol, limit); }
+  async upsertCrossAsset(row: CrossAssetRow): Promise<void> { return this.market.upsertCrossAsset(row); }
+  async getCrossAsset(limit = 50): Promise<CrossAssetRow[]> { return this.market.getCrossAsset(limit); }
+
+  async upsertPrediction(row: PredictionRow & { reasoning?: string; outcome?: number; outcome_classification?: string }): Promise<void> { return this.predictions.upsertPrediction(row); }
+  async persistTrace(row: TokenTraceRow): Promise<void> { return this.predictions.persistTrace(row); }
+  async updateTrace(traceId: string, updates: Record<string, unknown>): Promise<void> { return this.predictions.updateTrace(traceId, updates); }
+  async getTracesNeedingAnalysis(limit = 50): Promise<TokenTraceRow[]> { return this.predictions.getTracesNeedingAnalysis(limit); }
+  async getTracesNeedingOutcome(limit = 100): Promise<TokenTraceRow[]> { return this.predictions.getTracesNeedingOutcome(limit); }
+  async getPredictions(filter?: { symbol?: string; model_id?: string; limit?: number; minConfidence?: number }): Promise<PredictionRow[]> { return this.predictions.getPredictions(filter); }
+  async prunePredictions(olderThanMs: number): Promise<number> { return this.predictions.prunePredictions(olderThanMs); }
+  async insertDriftEvent(event: { id: string; ts: string; model_id: string; detector: string; index: number; symbol?: string; confidence?: number; message: string }): Promise<void> { return this.predictions.insertDriftEvent(event); }
+  async getDriftEvents(filter?: { limit?: number }): Promise<Array<{ id: string; ts: string; model_id: string; detector: string; symbol?: string; confidence?: number; message: string }>> { return this.predictions.getDriftEvents(filter); }
+
+  async persistRun(result: { tickers: EnrichedTicker[]; newsMatches: NewsMatch[]; signals: TokenSignal[] }): Promise<void> { return this.scanArchive.persistRun(result); }
+  async enforceRetention(days: number): Promise<void> { return this.scanArchive.enforceRetention(days); }
+
+  async stats(): Promise<Record<string, number>> { return this.meta.stats(); }
 }

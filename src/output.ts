@@ -91,9 +91,19 @@ function f(v: number | null | undefined, d: number = 2): string {
   return v.toFixed(d);
 }
 
-/** CSV-safe string: wrap in double quotes, escape internal quotes */
+/** Escape a CSV field value to prevent formula injection (e.g. =, +, -, @). */
+function escapeCsvField(val: string): string {
+  if (val.length === 0) return val;
+  const first = val[0];
+  if (first === '=' || first === '+' || first === '-' || first === '@' || first === '\t') {
+    return "'\t" + val;
+  }
+  return val;
+}
+
+/** CSV-safe string: wrap in double quotes, escape internal quotes and formula-injection chars */
 function q(s: string): string {
-  return `"${s.replace(/"/g, '""')}"`;
+  return `"${escapeCsvField(s).replace(/"/g, '""')}"`;
 }
 
 /**
@@ -328,10 +338,19 @@ export function toMarkdownReport(
   return lines.join('\n');
 }
 
-// ── Terminal table ──
+/**
+ * Render a mini ASCII sparkline representing price movement direction.
+ */
+function renderSparkline(changePct: number): string {
+  if (changePct >= 10) return '  ▅▇█';
+  if (changePct >= 5)  return '  ▄▅▇';
+  if (changePct >= 0)  return '  ▃▄▅';
+  if (changePct >= -5) return '  ▅▄▃';
+  return '  █▇▅';
+}
 
 /**
- * Format tickers as a terminal-friendly table.
+ * Format tickers as a high-density, rich terminal-friendly dashboard table.
  * @param tickers Array of enriched tickers
  * @param aggregatedSignals Optional aggregated signals
  * @returns Terminal table string
@@ -340,18 +359,19 @@ export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: Aggregate
   const lines: string[] = [];
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-  lines.push(`🛰️  Crypto Radar — ${now}  |  ${tickers.length} tokens` +
-    (aggregatedSignals && aggregatedSignals.length > 0 ? `  |  ${aggregatedSignals.length} signals` : '') + '\n');
+  lines.push(`╔═══════════════════════════════════════════════════════════════════════════════════════╗`);
+  lines.push(`║ 🛰️  Crypto Radar Market Terminal — ${now} UTC | ${tickers.length} Tokens Tracked ║`);
+  lines.push(`╚═══════════════════════════════════════════════════════════════════════════════════════╝\n`);
 
   // Header
-  lines.push('Sym     Chain    Price        24h Chg    Vol(24h)    Spread   Momentum  Tags');
+  lines.push('Sym     Chain    Price        24h Chg    Trend  Vol(24h)    Spread   Momentum  Signals & Risk Metrics');
+  lines.push('──────  ───────  ───────────  ─────────  ─────  ──────────  ───────  ────────  ──────────────────────');
 
-  // Build a lookup of signal tags per symbol
-  const signalTags = new Map<string, string>();
+  // Build a lookup of signal details per symbol
+  const signalMap = new Map<string, AggregatedSignal>();
   if (aggregatedSignals) {
     for (const sig of aggregatedSignals) {
-      const dir = sig.direction === 'buy' ? '🟢' : sig.direction === 'sell' ? '🔴' : '⚪';
-      signalTags.set(sig.symbol, `${dir}${(sig.compositeConfidence * 100).toFixed(0)}%`);
+      signalMap.set(sig.symbol, sig);
     }
   }
 
@@ -361,21 +381,30 @@ export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: Aggregate
     const price = fmtPrice(t.lastPrice).padEnd(12);
     const chg = (t.priceChangePercent >= 0 ? '+' : '') + t.priceChangePercent.toFixed(2) + '%';
     const chgStr = chg.padEnd(10);
+    const trend = renderSparkline(t.priceChangePercent).padEnd(6);
     const vol = fmtQuoteVol(t.quoteVolume).padEnd(10);
     const spread = fmtSpread(t.spreadPct).padEnd(8);
     const momentum = t.momentum.toFixed(1).padEnd(8);
 
-    // Tags
+    // Rich Tags & Signal Details
     const tags: string[] = [];
     if (t.priceChangePercent <= -5) tags.push('🔴DIP');
     else if (t.priceChangePercent >= 5) tags.push('🟢PUMP');
     if (t.quoteVolume >= 10e6) tags.push('💧HI-LIQ');
     if (t.spreadPct >= 1) tags.push('⚠️WIDE');
-    const sigTag = signalTags.get(t.symbol);
-    if (sigTag) tags.push(sigTag);
-    const tagStr = tags.join(' ');
 
-    lines.push(`${sym} ${chain} ${price} ${chgStr} ${vol} ${spread} ${momentum} ${tagStr}`);
+    const sig = signalMap.get(t.symbol);
+    if (sig) {
+      const dirBadge = sig.direction === 'strong_buy' ? '🚀BUY' : sig.direction === 'buy' ? '🟢BUY' : sig.direction === 'strong_sell' ? '💥SELL' : sig.direction === 'sell' ? '🔴SELL' : '⚪WAIT';
+      tags.push(`${dirBadge} ${(sig.compositeConfidence * 100).toFixed(0)}%`);
+
+      if (sig.riskManagement) {
+        tags.push(`[R:R ${sig.riskManagement.riskRewardRatio.toFixed(1)}|SL ${fmtPrice(sig.riskManagement.stopLossPrice)}]`);
+      }
+    }
+
+    const tagStr = tags.join(' ');
+    lines.push(`${sym} ${chain} ${price} ${chgStr} ${trend} ${vol} ${spread} ${momentum} ${tagStr}`);
   }
 
   return lines.join('\n');

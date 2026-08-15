@@ -9,6 +9,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +19,8 @@ def update_manifest(
     model_path: str,
     joblib_path: str,
     metrics_path: str,
-    metrics: dict,
-    training_config: dict,
+    metrics: dict[str, Any],
+    training_config: dict[str, Any],
 ) -> None:
     """Update the model MANIFEST.json in the output directory.
 
@@ -38,7 +39,7 @@ def update_manifest(
     manifest_path = output_dir / "MANIFEST.json"
 
     # Build the new model entry
-    new_entry: dict = {
+    new_entry: dict[str, Any] = {
         "path": Path(model_path).name,
         "joblib_path": Path(joblib_path).name,
         "metrics_path": Path(metrics_path).name,
@@ -51,7 +52,7 @@ def update_manifest(
     }
 
     # Load existing manifest or create new one
-    manifest: dict = {"active_model": None, "models": [], "retired_models": []}
+    manifest: dict[str, Any] = {"active_model": None, "models": [], "retired_models": []}
     if manifest_path.exists():
         try:
             with open(manifest_path) as f:

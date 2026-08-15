@@ -89,7 +89,7 @@ export class MomentumStrategy implements SignalStrategy {
 
     let volumeProfileConfirmed = false;
 
-    if (avgVolume20 != null && currentVolume > avgVolume20) {
+    if (avgVolume20 != null && avgVolume20 > 0 && currentVolume > avgVolume20) {
       const volRatio20 = currentVolume / avgVolume20;
       indicators.volumeRatio20 = volRatio20;
       if (volRatio20 > 1.5) {
@@ -100,7 +100,7 @@ export class MomentumStrategy implements SignalStrategy {
       }
     }
 
-    if (avgVolume50 != null && currentVolume > avgVolume50) {
+    if (avgVolume50 != null && avgVolume50 > 0 && currentVolume > avgVolume50) {
       const volRatio50 = currentVolume / avgVolume50;
       indicators.volumeRatio50 = volRatio50;
       if (volRatio50 > 1.3) {
@@ -112,7 +112,7 @@ export class MomentumStrategy implements SignalStrategy {
     }
 
     // Strong confirmation when volume is above both averages simultaneously
-    if (avgVolume20 != null && avgVolume50 != null && currentVolume > avgVolume20 && currentVolume > avgVolume50) {
+    if (avgVolume20 != null && avgVolume50 != null && avgVolume20 > 0 && avgVolume50 > 0 && currentVolume > avgVolume20 && currentVolume > avgVolume50) {
       confidence += 0.05;
       volumeProfileConfirmed = true;
       reasons.push('volume above both 20 and 50 period averages');
@@ -138,7 +138,7 @@ export class MomentumStrategy implements SignalStrategy {
 
       const isBreakoutUp = currentPrice > periodHigh20;
       const isBreakoutDown = currentPrice < periodLow20;
-      const hasVolumeConfirmation = avgVolume20 != null && currentVolume > avgVolume20 * 1.2;
+      const hasVolumeConfirmation = avgVolume20 != null && avgVolume20 > 0 && currentVolume > avgVolume20 * 1.2;
 
       if (isBreakoutUp && hasVolumeConfirmation) {
         confidence += 0.12;
