@@ -55,3 +55,6 @@ pnpm-lock.yaml
 
 .omg/ultragoal/ledger.jsonl
 data/crypto-radar/ml/models/metrics_20260717_223000.json
+data/test-run/radar-output.md
+data/test-run/radar-runlog.jsonl
+data/test-run/radar-tickers.jsonl
