@@ -7,6 +7,7 @@ GPU detection, class weight resolution, and leaf-to-depth mapping.
 
 import logging
 import math
+from typing import Any
 
 import numpy as np
 from catboost import CatBoostClassifier
@@ -67,7 +68,7 @@ def build_catboost(
     gpu: bool,
     add_ta: bool,
     verbose: bool,
-    params: dict | None = None,
+    params: dict[str, Any] | None = None,
 ) -> CatBoostClassifier:
     """Build and return a configured CatBoost classifier.
 

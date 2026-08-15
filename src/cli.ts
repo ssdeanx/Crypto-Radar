@@ -1156,10 +1156,38 @@ program
 
         for (const symbol of pairs) {
           for (const interval of intervals) {
-            const klines = (await store.getKlines(symbol, interval, {
+            let klines = (await store.getKlines(symbol, interval, {
               limit: Math.max(60, lookbackDays * 24),
               order: 'desc',
             })).reverse();
+            if (klines.length < 60) {
+              try {
+                const bKlines = await fetchKlines(symbol, interval, Math.min(500, Math.max(100, lookbackDays * 24)));
+                klines = bKlines.map(k => ({
+                  symbol,
+                  interval,
+                  open_time: k.openTime,
+                  openTime: k.openTime,
+                  open: k.open,
+                  high: k.high,
+                  low: k.low,
+                  close: k.close,
+                  volume: k.volume,
+                  close_time: k.closeTime,
+                  closeTime: k.closeTime,
+                  quote_volume: k.quoteVolume,
+                  quoteVolume: k.quoteVolume,
+                  count: k.count,
+                  taker_buy_vol: k.takerBuyVol,
+                  takerBuyVol: k.takerBuyVol,
+                  taker_buy_quote_vol: k.takerBuyQuoteVol,
+                  takerBuyQuoteVol: k.takerBuyQuoteVol,
+                  tsUtc: new Date(k.openTime).toISOString(),
+                }));
+              } catch (e) {
+                logger.warn(`  Failed fetching fallback klines for ${symbol} ${interval}: ${String(e)}`);
+              }
+            }
             if (klines.length < 60) {
               logger.warn(`  ${symbol} ${interval}: insufficient data (${klines.length})`);
               continue;

@@ -22,7 +22,7 @@ import type { TokenDef } from './tokens.js';
 import { fetchTicker } from './binance.js';
 import { fetchSimplePrices } from './coingecko.js';
 import { runRadar } from './radar.js';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { loadConfig } from './core/config.js';
 import { logWarn } from './core/errors.js';
@@ -47,6 +47,36 @@ export const DIFFICULTY_BALANCES: Record<Difficulty, number> = {
   [Difficulty.EXTREME]: 100,
 };
 
+/** Execution realism settings (slippage, exchange fees) */
+export interface ExecutionModelConfig {
+  /** Slippage rate in decimal (e.g. 0.0005 for 0.05%, 0 for zero-slippage) */
+  slippageRate?: number;
+  /** Maker fee rate (e.g. 0.0002 for 0.02%, 0 for zero fees) */
+  makerFeeRate?: number;
+  /** Taker fee rate (e.g. 0.0005 for 0.05%, 0 for zero fees) */
+  takerFeeRate?: number;
+}
+
+/** Options for trade execution */
+export interface TradeExecutionOptions {
+  /** Reason / signal context that triggered this trade */
+  reason?: string;
+  /** Order execution type */
+  orderType?: 'market' | 'limit' | 'stop_loss' | 'take_profit' | 'trailing_stop';
+  /** Snapshot of market indicators and regime at time of trade execution for ML telemetry */
+  telemetry?: Record<string, unknown>;
+  /** Stop loss price level */
+  stopLossPrice?: number;
+  /** Take profit price level */
+  takeProfitPrice?: number;
+  /** Trailing stop percentage (e.g. 2 for 2%) */
+  trailingStopPct?: number;
+  /** Override slippage rate for this trade */
+  slippageRate?: number;
+  /** Override fee rate for this trade */
+  feeRate?: number;
+}
+
 /** Configuration for the PaperTrader */
 export interface PaperTraderConfig {
   /** Starting fake USD balance (default: 10,000) */
@@ -59,6 +89,8 @@ export interface PaperTraderConfig {
   profileName?: string;
   /** Difficulty level (determines starting balance if startingBalance not set). Defaults to EASY */
   difficulty?: Difficulty;
+  /** Execution realism settings (slippage, fees) */
+  executionModel?: ExecutionModelConfig;
 }
 
 /** A single trade record */
@@ -75,6 +107,20 @@ export interface PaperTrade {
   pnl?: number;
   /** Reason / signal context that triggered this trade (for agent play) */
   reason?: string;
+  /** Fee paid in USD */
+  fee?: number;
+  /** Slippage percentage experienced */
+  slippage?: number;
+  /** Order execution type */
+  orderType?: 'market' | 'limit' | 'stop_loss' | 'take_profit' | 'trailing_stop';
+  /** Max Favorable Excursion % reached during trade lifetime */
+  mfe?: number;
+  /** Max Adverse Excursion % reached during trade lifetime */
+  mae?: number;
+  /** Duration held in milliseconds */
+  holdingDurationMs?: number;
+  /** Snapshot of market indicators and regime at time of trade execution */
+  telemetry?: Record<string, unknown>;
 }
 
 /** A holding position for a token */
@@ -83,6 +129,13 @@ export interface PortfolioHolding {
   tokenId: string;
   amount: number;
   avgEntryPrice: number; // weighted average entry price
+  entryTimestamp?: string;
+  peakPrice?: number;
+  troughPrice?: number;
+  stopLossPrice?: number;
+  takeProfitPrice?: number;
+  trailingStopPct?: number;
+  entryIndicators?: Record<string, unknown>;
 }
 
 /** Full portfolio state (persisted as JSON) */
@@ -221,7 +274,7 @@ export function expandHome(filePath: string): string {
 
 export class PaperTrader {
   private state: PortfolioState;
-  private readonly config: Required<PaperTraderConfig>;
+  private readonly config: Required<Omit<PaperTraderConfig, 'executionModel'>> & { executionModel: Required<ExecutionModelConfig> };
   private profileName: string;
   private createdAt: string;
   private tokenCache: Map<string, { price: number; timestamp: number }>;
@@ -241,6 +294,11 @@ export class PaperTrader {
       dataDir: config.dataDir ?? loadConfig().dataDir,
       profileName: this.profileName,
       difficulty,
+      executionModel: {
+        slippageRate: config.executionModel?.slippageRate ?? 0,
+        makerFeeRate: config.executionModel?.makerFeeRate ?? 0,
+        takerFeeRate: config.executionModel?.takerFeeRate ?? 0,
+      },
     };
     this.createdAt = new Date().toISOString();
     this.tokenCache = new Map();
@@ -355,10 +413,14 @@ export class PaperTrader {
    * Buy a specified amount of a token.
    * @param symbol Token symbol (e.g., "SOL", "ETH")
    * @param amount Quantity to buy
-   * @param reason Optional reason for the trade (for agent play tracking)
+   * @param optionsOrReason Optional reason string or full TradeExecutionOptions
    * @returns The executed trade, or null if it failed
    */
-  async buy(symbol: string, amount: number, reason?: string): Promise<PaperTrade | null> {
+  async buy(
+    symbol: string,
+    amount: number,
+    optionsOrReason?: string | TradeExecutionOptions,
+  ): Promise<PaperTrade | null> {
     const upperSym = symbol.toUpperCase();
     if (!Number.isFinite(amount) || amount <= 0) return null;
 
@@ -368,7 +430,19 @@ export class PaperTrader {
     const price = await this.getPrice(upperSym);
     if (price === null || price <= 0) return null;
 
-    const totalCost = amount * price;
+    const options: TradeExecutionOptions =
+      typeof optionsOrReason === 'string'
+        ? { reason: optionsOrReason }
+        : (optionsOrReason ?? {});
+
+    const slippageRate = options.slippageRate ?? this.config.executionModel.slippageRate;
+    const feeRate = options.feeRate ?? this.config.executionModel.takerFeeRate;
+
+    const executedPrice = price * (1 + slippageRate);
+    const subtotal = amount * executedPrice;
+    const fee = subtotal * feeRate;
+    const totalCost = subtotal + fee;
+
     if (!Number.isFinite(totalCost) || totalCost <= 0) return null;
 
     if (totalCost > this.state.cash) {
@@ -378,18 +452,33 @@ export class PaperTrader {
     // Deduct cash
     this.state.cash -= totalCost;
 
+    const now = nowISO();
+
     // Update holdings (weighted average entry price)
     const existing = this.state.holdings.find(h => h.symbol === upperSym);
     if (existing) {
-      const totalCostBasis = existing.amount * existing.avgEntryPrice + totalCost;
+      const totalCostBasis = existing.amount * existing.avgEntryPrice + subtotal;
       existing.amount += amount;
       existing.avgEntryPrice = totalCostBasis / existing.amount;
+      existing.peakPrice = Math.max(existing.peakPrice ?? executedPrice, executedPrice);
+      existing.troughPrice = Math.min(existing.troughPrice ?? executedPrice, executedPrice);
+      if (options.stopLossPrice !== undefined) existing.stopLossPrice = options.stopLossPrice;
+      if (options.takeProfitPrice !== undefined) existing.takeProfitPrice = options.takeProfitPrice;
+      if (options.trailingStopPct !== undefined) existing.trailingStopPct = options.trailingStopPct;
+      if (options.telemetry) existing.entryIndicators = options.telemetry;
     } else {
       this.state.holdings.push({
         symbol: upperSym,
         tokenId: token.id,
         amount,
-        avgEntryPrice: price,
+        avgEntryPrice: executedPrice,
+        entryTimestamp: now,
+        peakPrice: executedPrice,
+        troughPrice: executedPrice,
+        stopLossPrice: options.stopLossPrice,
+        takeProfitPrice: options.takeProfitPrice,
+        trailingStopPct: options.trailingStopPct,
+        entryIndicators: options.telemetry,
       });
     }
 
@@ -400,10 +489,14 @@ export class PaperTrader {
       symbol: upperSym,
       tokenId: token.id,
       amount,
-      price,
+      price: executedPrice,
       total: totalCost,
-      timestamp: nowISO(),
-      reason,
+      timestamp: now,
+      reason: options.reason,
+      fee: fee > 0 ? fee : undefined,
+      slippage: slippageRate > 0 ? slippageRate * 100 : undefined,
+      orderType: options.orderType ?? 'market',
+      telemetry: options.telemetry,
     };
     this.state.trades.push(trade);
 
@@ -414,10 +507,14 @@ export class PaperTrader {
    * Sell a specified amount of a token.
    * @param symbol Token symbol (e.g., "SOL", "ETH")
    * @param amount Quantity to sell (or -1 for all)
-   * @param reason Optional reason for the trade (for agent play tracking)
+   * @param optionsOrReason Optional reason string or full TradeExecutionOptions
    * @returns The executed trade, or null if it failed
    */
-  async sell(symbol: string, amount: number, reason?: string): Promise<PaperTrade | null> {
+  async sell(
+    symbol: string,
+    amount: number,
+    optionsOrReason?: string | TradeExecutionOptions,
+  ): Promise<PaperTrade | null> {
     const upperSym = symbol.toUpperCase();
     if (amount === 0) return null;
 
@@ -435,12 +532,33 @@ export class PaperTrader {
     const price = await this.getPrice(upperSym);
     if (price === null || price <= 0) return null;
 
-    const totalValue = sellAmount * price;
+    const options: TradeExecutionOptions =
+      typeof optionsOrReason === 'string'
+        ? { reason: optionsOrReason }
+        : (optionsOrReason ?? {});
+
+    const slippageRate = options.slippageRate ?? this.config.executionModel.slippageRate;
+    const feeRate = options.feeRate ?? this.config.executionModel.takerFeeRate;
+
+    const executedPrice = price * (1 - slippageRate);
+    const subtotal = sellAmount * executedPrice;
+    const fee = subtotal * feeRate;
+    const netProceeds = subtotal - fee;
     const costBasis = sellAmount * holding.avgEntryPrice;
-    const realizedPnl = totalValue - costBasis;
+    const realizedPnl = netProceeds - costBasis;
 
     // Add cash
-    this.state.cash += totalValue;
+    this.state.cash += netProceeds;
+
+    // Holding duration & excursion metrics
+    const now = nowISO();
+    const entryMs = holding.entryTimestamp ? new Date(holding.entryTimestamp).getTime() : Date.now();
+    const durationMs = Math.max(0, Date.now() - entryMs);
+
+    const peak = Math.max(holding.peakPrice ?? holding.avgEntryPrice, executedPrice);
+    const trough = Math.min(holding.troughPrice ?? holding.avgEntryPrice, executedPrice);
+    const mfe = holding.avgEntryPrice > 0 ? ((peak - holding.avgEntryPrice) / holding.avgEntryPrice) * 100 : 0;
+    const mae = holding.avgEntryPrice > 0 ? ((holding.avgEntryPrice - trough) / holding.avgEntryPrice) * 100 : 0;
 
     // Update holding
     holding.amount -= sellAmount;
@@ -455,11 +573,18 @@ export class PaperTrader {
       symbol: upperSym,
       tokenId: token.id,
       amount: sellAmount,
-      price,
-      total: totalValue,
+      price: executedPrice,
+      total: subtotal,
       pnl: realizedPnl,
-      timestamp: nowISO(),
-      reason,
+      timestamp: now,
+      reason: options.reason,
+      fee: fee > 0 ? fee : undefined,
+      slippage: slippageRate > 0 ? slippageRate * 100 : undefined,
+      orderType: options.orderType ?? 'market',
+      mfe: Math.round(mfe * 100) / 100,
+      mae: Math.round(mae * 100) / 100,
+      holdingDurationMs: durationMs,
+      telemetry: holding.entryIndicators,
     };
     this.state.trades.push(trade);
 
@@ -1004,6 +1129,120 @@ export class PaperTrader {
     this.tokenCache.clear();
     this.reset();
     return this.load();
+  }
+
+  /**
+   * Export closed trades and telemetry state into an AI-ready dataset.
+   * @param outputPath Optional file path to write dataset to
+   * @param format 'jsonl' or 'csv'
+   * @returns The generated dataset content string
+   */
+  exportDataset(outputPath?: string, format: 'jsonl' | 'csv' = 'jsonl'): string {
+    const closedTrades = this.state.trades.filter(t => t.type === 'sell' && typeof t.pnl === 'number');
+    if (closedTrades.length === 0) {
+      const emptyOut = format === 'csv' ? 'tradeId,symbol,side,entryPrice,exitPrice,pnl,win\n' : '';
+      if (outputPath) {
+        mkdirSync(path.dirname(outputPath), { recursive: true });
+        writeFileSync(outputPath, emptyOut, 'utf-8');
+      }
+      return emptyOut;
+    }
+
+    if (format === 'csv') {
+      const headers = [
+        'tradeId',
+        'symbol',
+        'type',
+        'amount',
+        'price',
+        'total',
+        'pnl',
+        'fee',
+        'slippage',
+        'orderType',
+        'mfe',
+        'mae',
+        'holdingDurationMs',
+        'win',
+        'timestamp',
+      ];
+      const lines = [headers.join(',')];
+      for (const t of closedTrades) {
+        const win = (t.pnl ?? 0) > 0 ? 1 : 0;
+        lines.push([
+          t.id,
+          t.symbol,
+          t.type,
+          t.amount,
+          t.price,
+          t.total,
+          t.pnl ?? 0,
+          t.fee ?? 0,
+          t.slippage ?? 0,
+          t.orderType ?? 'market',
+          t.mfe ?? 0,
+          t.mae ?? 0,
+          t.holdingDurationMs ?? 0,
+          win,
+          `"${t.timestamp}"`,
+        ].join(','));
+      }
+      const output = lines.join('\n') + '\n';
+      if (outputPath) {
+        mkdirSync(path.dirname(outputPath), { recursive: true });
+        writeFileSync(outputPath, output, 'utf-8');
+      }
+      return output;
+    }
+
+    // JSONL format
+    const lines: string[] = [];
+    for (const t of closedTrades) {
+      const win = (t.pnl ?? 0) > 0 ? 1 : 0;
+      const row: Record<string, unknown> = {
+        tradeId: t.id,
+        profile: this.profileName,
+        symbol: t.symbol,
+        tokenId: t.tokenId,
+        type: t.type,
+        amount: t.amount,
+        exitPrice: t.price,
+        totalUsd: t.total,
+        pnlUsd: t.pnl ?? 0,
+        pnlPercent: t.total > 0 && t.pnl !== undefined ? ((t.pnl / (t.total - t.pnl)) * 100) : 0,
+        feeUsd: t.fee ?? 0,
+        slippagePercent: t.slippage ?? 0,
+        orderType: t.orderType ?? 'market',
+        mfePercent: t.mfe ?? 0,
+        maePercent: t.mae ?? 0,
+        holdingDurationMs: t.holdingDurationMs ?? 0,
+        win,
+        timestamp: t.timestamp,
+        reason: t.reason ?? '',
+      };
+
+      // Flatten telemetry features into top-level feature keys if present
+      if (t.telemetry && typeof t.telemetry === 'object') {
+        for (const [k, v] of Object.entries(t.telemetry)) {
+          if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+            for (const [subK, subV] of Object.entries(v as Record<string, unknown>)) {
+              row[`feat_${k}_${subK}`] = subV;
+            }
+          } else {
+            row[`feat_${k}`] = v;
+          }
+        }
+      }
+
+      lines.push(JSON.stringify(row));
+    }
+
+    const output = lines.join('\n') + (lines.length > 0 ? '\n' : '');
+    if (outputPath) {
+      mkdirSync(path.dirname(outputPath), { recursive: true });
+      writeFileSync(outputPath, output, 'utf-8');
+    }
+    return output;
   }
 
   /**

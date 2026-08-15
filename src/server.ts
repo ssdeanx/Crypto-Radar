@@ -37,12 +37,43 @@ async function start() {
   const fastify = await createApp({
     store,
     jwtSecret,
+    apiKey: process.env['RADAR__API_KEY'],
     corsOrigin: process.env['CORS_ORIGIN']?.split(',') ?? [
       'https://crypto-radar.vercel.app',
       'http://localhost:5173',
       'http://localhost:4173',
     ],
   });
+
+  let isShuttingDown = false;
+  const handleShutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    log.info(`Received ${signal} signal — initiating graceful shutdown...`);
+
+    try {
+      await fastify.close();
+      log.info('Fastify server closed successfully');
+
+      if (process.env['RADAR__STORAGE_BUCKET']) {
+        log.info('Flushing SQLite store and ML artifacts to GCS bucket...');
+        await store.syncToBucket();
+        await store.syncModelsToBucket();
+      }
+
+      store.close();
+      log.info('Database handle closed successfully');
+
+      log.info('Graceful shutdown completed cleanly');
+      process.exit(0);
+    } catch (err) {
+      log.error('Error during graceful shutdown', { error: String(err) });
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
 
   try {
     await fastify.listen({ port, host: '0.0.0.0' });

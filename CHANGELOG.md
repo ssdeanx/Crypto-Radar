@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.9.0] — 2026-08-12
+
+### Added
+
+- **Production ML Dataset Exporter CLI** (`src/ml/build-dataset-cli.ts` & `package.json`):
+  - Created standalone ML dataset assembly CLI querying local historical SQLite store with live Binance REST fallback for missing windows.
+  - Computes 42 technical features per candle with $t+5, 20, 60$ forward return labels and Z-score normalization statistics (`data/ml/norm_stats.json`).
+  - Added `npm run ml:build-dataset` script.
+- **Automated CatBoost Retraining & GCS Sync** (`src/api/fastify/routes/cron.ts` & `src/store/db.ts`):
+  - Built `POST /api/cron/retrain` endpoint with constant-time `x-api-key` / `CRON_SECRET` authentication.
+  - Triggers dataset assembly, CatBoost model training subprocess (`ml/train.py`), model manifest updates (`MANIFEST.json`), and auto-syncs trained model binaries to Google Cloud Storage (`crypto-radar-storage-${PROJECT_ID}`).
+- **RSI & MACD Divergence Strategy Engine** (`src/analysis/divergence.ts` & `src/analysis/engine.ts`):
+  - Created `DivergenceStrategy` to scan for regular bullish (Price LL + RSI HL), regular bearish (Price HH + RSI LH), and MACD histogram momentum confirmation.
+  - Integrated into `StrategyEngine` with rebalanced strategy weights (Momentum 35%, Mean Reversion 20%, Trend Following 30%, Divergence 15%).
+- **Advanced Signal Enrichment & Risk Management** (`src/analysis/engine.ts`):
+  - Enriched `AggregatedSignal` with Candlestick Pattern Recognition (`scanPatterns`), Support & Resistance pivots (`findSupportResistance`), Volume Profile POC & Value Area (`computeVolumeProfile`), ATR-based Stop-Loss, Take-Profit targets, Risk-Reward ratio (R:R), and Kelly Criterion position sizing.
+- **Calibrated ML Confidence Bounds** (`src/ml/predict.ts`):
+  - Added volatility-calibrated 95% confidence interval bounds (`confidenceRange: { low, high }`) for CatBoost predictions.
+- **Rich Visual Terminal Dashboard & ASCII Sparklines** (`src/output.ts`):
+  - Upgraded terminal table output (`toTable`) with ASCII trend sparklines (`▅▇█`, `▄▅▇`, `▅▄▃`, `█▇▅`), direction badges (`🚀BUY 85%`, `🟢BUY 72%`, `💥SELL 88%`, `🔴SELL 64%`, `⚪WAIT`), and inline risk management bounds (`[R:R 2.4|SL $8.62]`).
+- **Cloud Scheduler Retraining Jobs** (`infra/main.tf` & `deploy.sh`):
+  - Configured weekly Cloud Scheduler retraining jobs for Cloud Run deployment.
+
+### Fixed
+
+- **Price Formatting**: Fixed duplicate dollar sign output (`$$8.62` $\rightarrow$ `$8.62`) in stop-loss visual terminal tags.
+
+---
+
 ## [2.8.1] — 2026-07-22
 
 ### Added

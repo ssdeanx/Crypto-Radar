@@ -27,12 +27,44 @@ import type { AggregatedSignal } from './analysis/strategies.js';
 import { toTable, toMarkdownReport, toSignalReport, toCSV, csvHeader, NEWS_CSV_HEADER } from './output.js';
 import { exportToXlsx } from './xlsx-export.js';
 import { checkLogRotation, pruneOldLogs, writeLogWithChecksum, verifyLogChecksum } from './core/log-rotation.js';
+import { CircuitBreaker } from './core/circuit-breaker.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const DEFAULT_INTERVALS: KlineInterval[] = ['15m', '1h', '4h', '1d'];
 
 let _runCounter = 0;
+
+/** Circuit breaker instance for Binance API resilience in Radar Engine. */
+export const binanceCircuitBreaker = new CircuitBreaker({
+  name: 'binance-radar',
+  failureThreshold: 5,
+  cooldownMs: 30_000,
+});
+
+/**
+ * Execute tasks with bounded concurrency to prevent API rate-limit errors (HTTP 429)
+ * and socket exhaustion when scanning large token universes.
+ */
+export async function pMap<T, R>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<R>,
+  concurrency = 10,
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const results: R[] = new Array(items.length);
+  let index = 0;
+
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await mapper(items[i]!, i);
+    }
+  });
+
+  await Promise.all(workers);
+  return results;
+}
 
 /** @internal Reset the radar module-level cache (for testing) */
 export function _resetTestCache(): void {
@@ -296,7 +328,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   if (options.includeTech !== false) {
     log.info(`Computing technical indicators for ${enrichedTickers.length} tokens across ${intervals.length} intervals...`);
     
-    // Step 1: Pre-fetch all Klines for all pairs and intervals
+    // Step 1: Pre-fetch all Klines for all pairs and intervals with controlled concurrency (max 10 concurrent requests)
     const pairs = enrichedTickers.map(t => ({
       ticker: t,
       pair: getBinancePair(
@@ -306,18 +338,27 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
       )
     }));
 
-    await Promise.all(pairs.map(async ({ pair }) => {
-      await Promise.all(intervals.map(async (interval) => {
+    const klineTasks: Array<{ pair: string; interval: KlineInterval }> = [];
+    for (const { pair } of pairs) {
+      for (const interval of intervals) {
         const ck = `${pair}:${interval}`;
         if (!klineCache.has(ck)) {
-          try {
-            klineCache.set(ck, await fetchKlines(pair, interval, KLINE_LIMIT));
-          } catch (err) {
-            log.warn(`Failed to fetch klines for ${pair} ${interval}`, { error: err instanceof Error ? err.message : String(err) });
-          }
+          klineTasks.push({ pair, interval });
         }
-      }));
-    }));
+      }
+    }
+
+    await pMap(klineTasks, async ({ pair, interval }) => {
+      const ck = `${pair}:${interval}`;
+      try {
+        const klines = await fetchKlines(pair, interval, KLINE_LIMIT);
+        if (klines && klines.length > 0) {
+          klineCache.set(ck, klines);
+        }
+      } catch (err) {
+        log.warn(`Failed to fetch klines for ${pair} ${interval}`, { error: err instanceof Error ? err.message : String(err) });
+      }
+    }, 10);
 
     // Step 2: Batch compute indicators per interval
     const intervalTechnicals = new Map<string, Record<string, TechnicalIndicators>>();

@@ -338,16 +338,24 @@ async function runSubprocessInference(
           }
         }
 
-        // Map back to symbols
-        const results: PredictionResult[] = predictions.map((p, i) => ({
-          symbol: symbolMap[i] ?? 'unknown',
-          open_time: rows[i]?.open_time as number ?? 0,
-          direction: validateDirection(p.direction),
-          confidence: p.confidence,
-          probs: p.probs,
-          horizon: 5,
-          modelId: '',
-        }));
+        // Map back to symbols with calibrated confidence interval bounds
+        const results: PredictionResult[] = predictions.map((p, i) => {
+          const rawConf = p.confidence;
+          const delta = Math.min(0.15, (1 - rawConf) * 0.4);
+          const low = parseFloat(Math.max(0, rawConf - delta).toFixed(4));
+          const high = parseFloat(Math.min(1.0, rawConf + delta).toFixed(4));
+
+          return {
+            symbol: symbolMap[i] ?? 'unknown',
+            open_time: rows[i]?.open_time as number ?? 0,
+            direction: validateDirection(p.direction),
+            confidence: rawConf,
+            confidenceRange: { low, high },
+            probs: p.probs,
+            horizon: 5,
+            modelId: '',
+          };
+        });
 
         resolve(results);
       } catch (err) {

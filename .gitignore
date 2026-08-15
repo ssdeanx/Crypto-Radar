@@ -1,18 +1,19 @@
 node_modules/
 dist/
 coverage/
-
-
-*.lock
-.omo/
-.vml/
+.coverage
+ml/.coverage
+**/__pycache__/
+.pytest_cache/
+ml/.pytest_cache/
 .ruff_cache/
 catboost_info/
 .husky/
 .kilo/
 .hermes/
-ml/__pycache__/
-ml/.pytest_cache/
+.omo/
+.vml/
+uv.lock
 
 .env
 

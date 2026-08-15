@@ -6,18 +6,25 @@ import type { MarketRegime } from './regime.js';
 import { MomentumStrategy } from './momentum.js';
 import { MeanReversionStrategy } from './mean-reversion.js';
 import { TrendFollowingStrategy } from './trend-following.js';
+import { DivergenceStrategy } from './divergence.js';
+import { scanPatterns } from './patterns.js';
+import { findSupportResistance } from './support-resistance.js';
+import { computeVolumeProfile } from './volume-profile.js';
+import type { Kline } from '../types.js';
 import { logger } from '../core/logger.js';
 
 const DEFAULT_STRATEGIES: SignalStrategy[] = [
   new MomentumStrategy(),
   new MeanReversionStrategy(),
   new TrendFollowingStrategy(),
+  new DivergenceStrategy(),
 ];
 
 const DEFAULT_WEIGHTS: StrategyWeight[] = [
-  { name: 'momentum', weight: 0.40 },
+  { name: 'momentum', weight: 0.35 },
   { name: 'mean-reversion', weight: 0.20 },
-  { name: 'trend-following', weight: 0.40 },
+  { name: 'trend-following', weight: 0.30 },
+  { name: 'divergence', weight: 0.15 },
 ];
 
 /** Default timeframe weights — exported so consumers can inspect/merge */
@@ -139,32 +146,37 @@ export class StrategyEngine {
       }
     }
 
+    const tfResults = await Promise.all(
+      Array.from(techByInterval.entries()).map(async ([interval, tech]) => {
+        const tfCtx: StrategyContext = { ...ctx, technical: tech };
+        const tfSignals = this.strategies.map(s => {
+          try {
+            const sig = s.evaluate(tfCtx);
+            return { ...sig, timeframe: interval };
+          } catch (err) {
+            logger.error(`Strategy "${s.name}" failed on interval ${interval}`, {
+              symbol: ctx.ticker.symbol, error: err instanceof Error ? err.message : String(err),
+            });
+            return { strategy: s.name, direction: 'neutral' as const, confidence: 0, reason: `Error: ${err}`, indicators: {}, timeframe: interval };
+          }
+        });
+
+        const buySum = tfSignals.reduce((a, s) => a + (s.direction === 'buy' || s.direction === 'strong_buy' ? s.confidence : 0), 0);
+        const sellSum = tfSignals.reduce((a, s) => a + (s.direction === 'sell' || s.direction === 'strong_sell' ? s.confidence : 0), 0);
+        const reason = buySum > sellSum ? `${interval}: bullish (${(buySum * 100).toFixed(0)}%)`
+          : sellSum > buySum ? `${interval}: bearish (${(sellSum * 100).toFixed(0)}%)`
+          : `${interval}: neutral`;
+
+        return { signals: tfSignals, reason };
+      })
+    );
+
     const allSignals: StrategySignal[] = [];
     const tfReasons: string[] = [];
-    const tfSignalPromises: Promise<void>[] = [];
-    for (const [interval, tech] of techByInterval.entries()) {
-      tfSignalPromises.push(
-        Promise.resolve().then(() => {
-          const tfCtx: StrategyContext = { ...ctx, technical: tech };
-          const tfSignals = this.strategies.map(s => {
-            try { return s.evaluate(tfCtx); }
-            catch (err) {
-              logger.error(`Strategy "${s.name}" failed on interval ${interval}`, {
-                symbol: ctx.ticker.symbol, error: err instanceof Error ? err.message : String(err),
-              });
-              return { strategy: s.name, direction: 'neutral' as const, confidence: 0, reason: `Error: ${err}`, indicators: {}, timeframe: interval };
-            }
-          });
-          tfSignals.forEach(s => { s.timeframe = interval; allSignals.push(s); });
-          const buySum = tfSignals.reduce((a, s) => a + (s.direction === 'buy' || s.direction === 'strong_buy' ? s.confidence : 0), 0);
-          const sellSum = tfSignals.reduce((a, s) => a + (s.direction === 'sell' || s.direction === 'strong_sell' ? s.confidence : 0), 0);
-          if (buySum > sellSum) tfReasons.push(`${interval}: bullish (${(buySum * 100).toFixed(0)}%)`);
-          else if (sellSum > buySum) tfReasons.push(`${interval}: bearish (${(sellSum * 100).toFixed(0)}%)`);
-          else tfReasons.push(`${interval}: neutral`);
-        }),
-      );
+    for (const res of tfResults) {
+      allSignals.push(...res.signals);
+      tfReasons.push(res.reason);
     }
-    await Promise.all(tfSignalPromises);
 
     const totalWeight = Array.from(this.weights.values()).reduce((a, b) => a + b, 0) || 1;
     let weightedConfidence = 0;
@@ -221,7 +233,7 @@ export class StrategyEngine {
     if (ctx.news.length >= 2) alerts.push(`News: ${ctx.news.length} articles`);
 
     const compositeReason = `Multi-TF: ${tfReasons.join(' | ')}`;
-    return {
+    const baseSignal: AggregatedSignal = {
       symbol: ctx.ticker.symbol, tokenName: ctx.ticker.tokenName, chain: ctx.ticker.chain,
       lastPrice: ctx.ticker.lastPrice, priceChangePercent: ctx.ticker.priceChangePercent,
       direction, compositeConfidence: Math.round(weightedConfidence * 100) / 100,
@@ -229,6 +241,85 @@ export class StrategyEngine {
       signals: allSignals.map(s => ({ strategy: s.strategy, direction: s.direction, confidence: s.confidence, reason: s.reason, indicators: s.indicators, timeframe: s.timeframe })),
       alerts, timestamp: ctx.ticker.tsUtc, compositeReason,
     };
+
+    return this.enrichSignalDetails(baseSignal, ctx, agreement_score);
+  }
+
+  private enrichSignalDetails(
+    signal: AggregatedSignal,
+    ctx: StrategyContext,
+    agreementScore: number,
+  ): AggregatedSignal {
+    const klines: Kline[] = ctx.klineCloses && ctx.klineCloses.length > 5
+      ? ctx.klineCloses.map((c, i) => ({
+          openTime: i * 3600000,
+          open: c,
+          high: ctx.klineHighs?.[i] ?? c,
+          low: ctx.klineLows?.[i] ?? c,
+          close: c,
+          volume: ctx.klineVolumes?.[i] ?? 0,
+          closeTime: (i + 1) * 3600000,
+          quoteVolume: 0,
+          count: 0,
+          takerBuyVol: 0,
+          takerBuyQuoteVol: 0,
+          ignore: 0,
+        }))
+      : [];
+
+    if (klines.length > 5) {
+      const pRes = scanPatterns(ctx.ticker.symbol, klines);
+      if (pRes.patterns.length > 0) {
+        signal.patterns = pRes.patterns.map(p => ({
+          type: p.type,
+          direction: p.direction,
+          confidence: p.confidence,
+          description: p.description,
+        }));
+      }
+    }
+
+    if (klines.length > 10 && ctx.ticker.lastPrice > 0) {
+      const srRes = findSupportResistance(ctx.ticker.symbol, klines);
+      signal.supportResistance = {
+        nearestSupport: srRes.nearestSupport?.price ?? null,
+        nearestResistance: srRes.nearestResistance?.price ?? null,
+        upsideTargetPct: srRes.upsideTarget,
+        downsideRiskPct: srRes.downsideRisk,
+      };
+
+      const vpRes = computeVolumeProfile(ctx.ticker.symbol, klines);
+      signal.volumeProfile = {
+        poc: vpRes.poc,
+        vah: vpRes.vah,
+        val: vpRes.val,
+      };
+    }
+
+    if (ctx.ticker.lastPrice > 0) {
+      const atrVal = ((ctx.technical?.atrPct ?? 2) / 100) * ctx.ticker.lastPrice;
+      const isBull = signal.direction === 'buy' || signal.direction === 'strong_buy';
+      const stopLossPrice = Math.max(0, isBull ? ctx.ticker.lastPrice - 2 * atrVal : ctx.ticker.lastPrice + 2 * atrVal);
+      const takeProfitPrice = isBull ? ctx.ticker.lastPrice + 3 * atrVal : Math.max(0, ctx.ticker.lastPrice - 3 * atrVal);
+      const riskPerShare = Math.abs(ctx.ticker.lastPrice - stopLossPrice);
+      const rewardPerShare = Math.abs(takeProfitPrice - ctx.ticker.lastPrice);
+      const riskRewardRatio = riskPerShare > 0 ? Math.round((rewardPerShare / riskPerShare) * 100) / 100 : 1.5;
+
+      const winProb = Math.max(0.1, Math.min(0.9, agreementScore));
+      const b = Math.max(0.5, riskRewardRatio);
+      const q = 1 - winProb;
+      const kellyFraction = (winProb * b - q) / b;
+      const kellyPositionSize = Math.round(Math.max(0, Math.min(0.25, kellyFraction)) * 100) / 100;
+
+      signal.riskManagement = {
+        stopLossPrice: Math.round(stopLossPrice * 10000) / 10000,
+        takeProfitPrice: Math.round(takeProfitPrice * 10000) / 10000,
+        riskRewardRatio,
+        kellyPositionSize,
+      };
+    }
+
+    return signal;
   }
 
   private aggregate(signals: ReturnType<SignalStrategy['evaluate']>[], ctx: StrategyContext): AggregatedSignal {
@@ -284,7 +375,7 @@ export class StrategyEngine {
     if (ctx.technical?.rsi != null && ctx.technical.rsi < 30) alerts.push('RSI oversold');
     if (ctx.ticker.quoteVolume >= 10e6) alerts.push('High volume');
     if (ctx.news.length >= 2) alerts.push(`News: ${ctx.news.length} articles`);
-    return {
+    const baseSignal: AggregatedSignal = {
       symbol: ctx.ticker.symbol, tokenName: ctx.ticker.tokenName, chain: ctx.ticker.chain,
       lastPrice: ctx.ticker.lastPrice, priceChangePercent: ctx.ticker.priceChangePercent,
       direction, compositeConfidence: Math.round(weightedConfidence * 100) / 100,
@@ -292,6 +383,8 @@ export class StrategyEngine {
       signals: signals.map(s => ({ strategy: s.strategy, direction: s.direction, confidence: s.confidence, reason: s.reason, indicators: s.indicators, timeframe: s.timeframe })),
       alerts, timestamp: ctx.ticker.tsUtc,
     };
+
+    return this.enrichSignalDetails(baseSignal, ctx, agreement_score);
   }
 
   /**

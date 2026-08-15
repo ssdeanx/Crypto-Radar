@@ -43,6 +43,7 @@ export interface FastifyAppOptions {
   store: Store;
   paperTrader?: PaperTrader;
   jwtSecret: string;
+  apiKey?: string;
   corsOrigin?: string | string[];
 }
 
@@ -75,6 +76,35 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
     request.id = (request.headers['x-request-id'] as string) || randomUUID().slice(0, 8);
   });
 
+  // ── Enterprise: Static x-api-key header authentication preHandler hook ──
+  app.addHook('onRequest', async (request, reply) => {
+    if (
+      request.url === '/api/health' ||
+      request.url.startsWith('/api/health?') ||
+      request.url === '/api/health/ready' ||
+      request.url === '/api/health/deep' ||
+      request.url.startsWith('/docs')
+    ) {
+      return;
+    }
+
+    const apiKeyEnv = process.env['RADAR__API_KEY'] || opts.apiKey;
+    if (apiKeyEnv) {
+      const apiKeyHeader = request.headers['x-api-key'];
+      const cronSecretHeader = request.headers['x-cron-secret'];
+      const cronSecretEnv = process.env['CRON_SECRET'];
+
+      const isValidApiKey = apiKeyHeader === apiKeyEnv;
+      const isValidCronSecret = Boolean(cronSecretHeader && cronSecretEnv && cronSecretHeader === cronSecretEnv);
+      const isBearerAuth = Boolean(request.headers.authorization?.startsWith('Bearer '));
+
+      if (!isValidApiKey && !isValidCronSecret && !isBearerAuth) {
+        reply.status(401).send({ error: 'Unauthorized: Invalid or missing x-api-key header', code: 'UNAUTHORIZED' });
+        return reply;
+      }
+    }
+  });
+
   // ── Enterprise: Security Headers (@fastify/helmet) ──
   // Sets X-Frame-Options, X-Content-Type-Options, Strict-Transport-Security,
   // X-XSS-Protection, Content-Security-Policy, and more.
@@ -87,7 +117,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   await app.register(cors, {
     origin: process.env['CORS_ORIGIN']?.split(',') ?? opts.corsOrigin ?? ['http://localhost:5173', 'http://localhost:4173'],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'x-cron-secret'],
+    allowedHeaders: ['Authorization', 'Content-Type', 'x-cron-secret', 'x-api-key'],
     credentials: true,
     maxAge: 600, // 10 min preflight cache
   });

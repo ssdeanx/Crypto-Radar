@@ -924,13 +924,15 @@ describe('getSignalRecommendations', () => {
         {
           symbol: 'SOL', tokenName: 'Solana', lastPrice: 100, direction: 'strong_buy',
           compositeConfidence: 0.85, compositeReason: 'good', alerts: [],
+          chain: 'solana', priceChangePercent: 5.2, signals: [], timestamp: new Date().toISOString(),
         },
         {
           symbol: 'BTC', tokenName: 'Bitcoin', lastPrice: 50000, direction: 'sell',
           compositeConfidence: 0.7, compositeReason: 'bad', alerts: [],
+          chain: 'multi', priceChangePercent: -2.1, signals: [], timestamp: new Date().toISOString(),
         },
       ],
-    });
+    } as unknown as Awaited<ReturnType<typeof runRadar>>);
   });
 
   afterEach(() => {
@@ -956,3 +958,92 @@ describe('getSignalRecommendations', () => {
     expect(recs).toEqual([]);
   });
 });
+
+// ── Realistic Execution & Telemetry Dataset Export ──
+
+describe('Realistic Execution & Telemetry Dataset Export', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'paper-trade-telemetry-test-'));
+    vi.clearAllMocks();
+    (getTokenBySymbol as ReturnType<typeof vi.fn>).mockImplementation((sym: string) => {
+      if (sym === 'SOL') return { id: 'solana', sym: 'SOL', name: 'Solana' };
+      if (sym === 'BTC') return { id: 'bitcoin', sym: 'BTC', name: 'Bitcoin' };
+      return null;
+    });
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'SOLUSDT', lastPrice: '100' });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('executes buy and sell with configured slippage and taker fee', async () => {
+    const trader = createTestTrader({
+      dataDir: tmpDir,
+      executionModel: {
+        slippageRate: 0.001, // 0.1% slippage
+        takerFeeRate: 0.0005, // 0.05% fee
+      },
+    });
+
+    // Buy 10 SOL at raw price $100 -> executed price = $100.1, subtotal = $1001, fee = $0.5005, total = $1001.5005
+    const buyTrade = await trader.buy('SOL', 10, { reason: 'Bullish breakout', telemetry: { rsi: 45, chop: 38 } });
+    expect(buyTrade).not.toBeNull();
+    expect(buyTrade!.price).toBeCloseTo(100.1, 4);
+    expect(buyTrade!.fee).toBeCloseTo(0.5005, 4);
+    expect(buyTrade!.slippage).toBeCloseTo(0.1, 4);
+    expect(buyTrade!.telemetry).toEqual({ rsi: 45, chop: 38 });
+    expect(trader.cash).toBeCloseTo(10000 - 1001.5005, 4);
+
+    // Now price increases to $110
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'SOLUSDT', lastPrice: '110' });
+
+    // Sell 10 SOL at raw price $110 -> executed price = $110 * (1 - 0.001) = $109.89, subtotal = $1098.9, fee = $0.54945, net = $1098.35055
+    const sellTrade = await trader.sell('SOL', 10, { reason: 'Take profit' });
+    expect(sellTrade).not.toBeNull();
+    expect(sellTrade!.price).toBeCloseTo(109.89, 4);
+    expect(sellTrade!.fee).toBeCloseTo(0.54945, 4);
+    expect(sellTrade!.mfe).toBeGreaterThanOrEqual(0);
+    expect(sellTrade!.mae).toBeGreaterThanOrEqual(0);
+    expect(sellTrade!.holdingDurationMs).toBeGreaterThanOrEqual(0);
+    expect(sellTrade!.telemetry).toEqual({ rsi: 45, chop: 38 });
+    // Cost basis = 10 * 100.1 = 1001. PnL = 1098.35055 - 1001 = 97.35055
+    expect(sellTrade!.pnl).toBeCloseTo(97.35055, 4);
+  });
+
+  it('exports telemetry dataset to jsonl and csv format', async () => {
+    const trader = createTestTrader({
+      dataDir: tmpDir,
+      executionModel: { slippageRate: 0.0005, takerFeeRate: 0.0005 },
+    });
+
+    await trader.buy('SOL', 5, {
+      reason: 'Signal buy',
+      telemetry: { rsi: 55, supertrend: { direction: 1, value: 95 } },
+    });
+
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'SOLUSDT', lastPrice: '105' });
+    await trader.sell('SOL', 5, { reason: 'Exit signal' });
+
+    // Export JSONL
+    const jsonlOutPath = join(tmpDir, 'telemetry-dataset.jsonl');
+    const jsonlStr = trader.exportDataset(jsonlOutPath, 'jsonl');
+    expect(existsSync(jsonlOutPath)).toBe(true);
+    expect(jsonlStr).toContain('"symbol":"SOL"');
+    expect(jsonlStr).toContain('"win":1');
+    expect(jsonlStr).toContain('"feat_rsi":55');
+    expect(jsonlStr).toContain('"feat_supertrend_direction":1');
+
+    // Export CSV
+    const csvOutPath = join(tmpDir, 'telemetry-dataset.csv');
+    const csvStr = trader.exportDataset(csvOutPath, 'csv');
+    expect(existsSync(csvOutPath)).toBe(true);
+    expect(csvStr).toContain('tradeId,symbol,type,amount,price,total,pnl');
+    expect(csvStr).toContain('SOL,sell,5,');
+  });
+});
+

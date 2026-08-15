@@ -31,6 +31,7 @@ import logging
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import joblib
 import numpy as np
@@ -159,7 +160,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 # ── Feature importance ─────────────────────────────────────────────────────
 
 
-def _feature_importance(model, feature_cols: list[str]) -> dict:
+def _feature_importance(model: Any, feature_cols: list[str]) -> dict[str, float]:
     """Return {feature: importance} dict for the trained CatBoost model."""
     try:
         imp = model.get_feature_importance(prettified=True)
@@ -358,7 +359,7 @@ def train(args: argparse.Namespace) -> None:
         sample_weight = None
 
     # ── Optional: Optuna hyperparameter optimization ──
-    best_params: dict | None = None
+    best_params: dict[str, Any] | None = None
     if args.optimize:
         best_params = _run_optuna(args, X_train, y_train, train_df["open_time"])
         logger.info("Optuna best params: %s", best_params)
@@ -376,13 +377,13 @@ def train(args: argparse.Namespace) -> None:
         verbose=args.verbose,
         params=best_params,
     )
-    fit_kwargs: dict = {}
+    fit_kwargs: dict[str, Any] = {}
     if sample_weight is not None:
         fit_kwargs["sample_weight"] = sample_weight
     model.fit(X_train, y_train, eval_set=(X_val, y_val), **fit_kwargs)
 
     # ── Optional: Ensemble training ──
-    ensemble_models: list = [model]
+    ensemble_models: list[Any] = [model]
     if args.ensemble > 1:
         logger.info("Training ensemble of %d models...", args.ensemble)
         for i in range(1, args.ensemble):
@@ -399,7 +400,7 @@ def train(args: argparse.Namespace) -> None:
                 verbose=False,
                 params=best_params,
             )
-            ens_kwargs: dict = {}
+            ens_kwargs: dict[str, Any] = {}
             if sample_weight is not None:
                 ens_kwargs["sample_weight"] = sample_weight
             ens_model.fit(X_train, y_train, eval_set=(X_val, y_val), **ens_kwargs)
@@ -442,7 +443,7 @@ def train(args: argparse.Namespace) -> None:
         y_test, y_pred, output_dict=True, zero_division=0
     )
 
-    metrics: dict = {
+    metrics: dict[str, Any] = {
         "accuracy": float(accuracy_score(y_test, y_pred)),
         "f1_weighted": float(f1_score(y_test, y_pred, average="weighted")),
         "f1_macro": float(f1_score(y_test, y_pred, average="macro")),
@@ -493,11 +494,11 @@ def train(args: argparse.Namespace) -> None:
             # Save underlying model before wrapping with calibrator
             _raw_model = model
             calibrated = CalibratedClassifierCV(
-                _raw_model, method="isotonic", cv="prefit"  # type: ignore[arg-type]
+                _raw_model, method="isotonic", cv="prefit"
             )
             calibrated.fit(X_val, y_val)
             # CalibratedClassifierCV delegates predict/predict_proba to base estimator
-            model = calibrated  # type: ignore[assignment]
+            model = calibrated
             logger.info("Probability calibration applied (isotonic, validation set)")
         except Exception as e:
             logger.warning("Calibration failed — proceeding without: %s", e)
@@ -516,7 +517,7 @@ def train(args: argparse.Namespace) -> None:
     # Save the primary model (first ensemble member)
     save_target = _raw_model if args.calibrate else ensemble_models[0]
     try:
-        save_target.save_model(str(model_path_cbm))  # type: ignore[union-attr]
+        save_target.save_model(str(model_path_cbm))
         joblib.dump(model, str(model_path_joblib))
     except Exception as e:
         logger.error("Failed to save model: %s", e)
@@ -584,7 +585,7 @@ def train(args: argparse.Namespace) -> None:
 # ── Optuna ─────────────────────────────────────────────────────────────────
 
 
-def _run_optuna(args, X_train, y_train, prediction_times_series) -> dict:
+def _run_optuna(args: argparse.Namespace, X_train: Any, y_train: Any, prediction_times_series: Any) -> dict[str, Any]:
     """Run Optuna hyperparameter search using purgedcv; return best trial params dict."""
     import optuna
     from optuna.pruners import HyperbandPruner
@@ -617,7 +618,7 @@ def _run_optuna(args, X_train, y_train, prediction_times_series) -> dict:
         embargo=embargo,
     )
 
-    def objective(trial):
+    def objective(trial: Any) -> float:
         params = {
             "learning_rate": trial.suggest_float("learning_rate", 0.005, 0.1, log=True),
             "depth": trial.suggest_int("depth", 4, 10),
@@ -661,7 +662,7 @@ def _run_optuna(args, X_train, y_train, prediction_times_series) -> dict:
 
 
 def _run_purged_cv(
-    args, feature_cols
+    args: argparse.Namespace, feature_cols: list[str]
 ) -> tuple[list[float], float | None, float | None]:
     """Run purgedcv WalkForwardSplit CV; return (scores, mean, std).
 
@@ -737,7 +738,7 @@ def _run_purged_cv(
 # ── SHAP ───────────────────────────────────────────────────────────────────
 
 
-def _run_shap(args, model, X_test, feature_cols, output_dir) -> str:
+def _run_shap(args: argparse.Namespace, model: Any, X_test: Any, feature_cols: list[str], output_dir: Path) -> str:
     """Compute SHAP mean|SHAP| per feature; save JSON; return path."""
     import shap
 

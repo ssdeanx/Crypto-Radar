@@ -29,6 +29,8 @@ function makeTech(overrides: Partial<TechnicalIndicators> = {}): TechnicalIndica
     bb: { upper: 110, middle: 100, lower: 90, width: 0.2, position: 0.5 },
     macd: { macd: 0.5, signal: 0.3, histogram: 0.2 },
     atrPct: 1.5, volTrend: 0, priceVsEma50: 0,
+    obv: 0,
+    volVsAvg: 0,
     ...overrides,
   };
 }
@@ -37,6 +39,7 @@ function makeCtx(overrides: Partial<StrategyContext> = {}): StrategyContext {
   return {
     ticker: makeTicker(),
     technical: makeTech(),
+    technicalsByInterval: new Map(),
     news: [],
     klineCloses: Array.from({ length: 200 }, (_, i) => 100 + Math.sin(i * 0.1) * 10),
     klineHighs: Array.from({ length: 200 }, (_, i) => 105 + Math.sin(i * 0.1) * 10),
@@ -51,7 +54,7 @@ describe('StrategyEngine', () => {
     const engine = new StrategyEngine();
     const result = await engine.evaluate(makeCtx());
 
-    expect(result.signals).toHaveLength(3); // momentum, mean-reversion, trend-following
+    expect(result.signals).toHaveLength(4); // momentum, mean-reversion, trend-following, divergence
     expect(result.direction).toBeDefined();
     expect(result.compositeConfidence).toBeGreaterThanOrEqual(0);
     expect(result.compositeConfidence).toBeLessThanOrEqual(1);
@@ -151,21 +154,22 @@ describe('StrategyEngine', () => {
     const engine = new StrategyEngine();
     const info = engine.getStrategyInfo();
 
-    expect(info.strategies).toHaveLength(3);
+    expect(info.strategies).toHaveLength(4);
     expect(info.tfWeights).toBeDefined();
     expect(info.tfWeights['1h']).toBe(0.25);
     const momentum = info.strategies.find(s => s.name === 'momentum');
     expect(momentum).toBeDefined();
-    expect(momentum!.weight).toBe(0.4);
+    expect(momentum!.weight).toBe(0.35);
     expect(momentum!.timeframe).toBe('1h');
   });
 
   it('getStrategyWeights returns current weights as record', () => {
     const engine = new StrategyEngine();
     const weights = engine.getStrategyWeights();
-    expect(weights['momentum']).toBe(0.4);
-    expect(weights['mean-reversion']).toBe(0.2);
-    expect(weights['trend-following']).toBe(0.4);
+    expect(weights['momentum']).toBe(0.35);
+    expect(weights['mean-reversion']).toBe(0.20);
+    expect(weights['trend-following']).toBe(0.30);
+    expect(weights['divergence']).toBe(0.15);
   });
 
   it('setStrategyWeight updates weight at runtime', () => {

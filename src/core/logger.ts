@@ -39,8 +39,18 @@ const LEVEL_LABEL: Record<number, string> = {
   60: 'FATAL',
 };
 
+const GCP_SEVERITY: Record<LogLevel, string> = {
+  trace: 'DEBUG',
+  debug: 'DEBUG',
+  info: 'INFO',
+  warn: 'WARNING',
+  error: 'ERROR',
+  fatal: 'CRITICAL',
+};
+
 export interface LogEntry {
   level: number;
+  severity?: string;
   time: string;
   msg: string;
   [key: string]: unknown;
@@ -52,7 +62,7 @@ class Logger {
   private minLevel: number = 30; // info default
   private outputStream: 'stdout' | 'file' = 'stdout';
   private logFilePath = '';
-  private format: LogFormat = 'text'; // text for terminal, json for files
+  private format: LogFormat = process.env['NODE_ENV'] === 'production' || process.env['LOG_FORMAT'] === 'json' ? 'json' : 'text';
   private logBuffer: string[] = [];
   private logFlushScheduled = false;
   private flushRegistered = false;
@@ -97,6 +107,7 @@ class Logger {
 
     const entry: LogEntry = {
       level: num,
+      severity: GCP_SEVERITY[level],
       time: new Date().toISOString(),
       msg,
       ...extra,

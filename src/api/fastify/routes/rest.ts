@@ -15,6 +15,9 @@ import { detectRegime } from '../../../analysis/regime.js';
 import { loadConfig } from '../../../core/config.js';
 import type { Kline } from '../../../types.js';
 import { listProfiles, PaperTrader, DIFFICULTY_BALANCES } from '../../../paper-trade.js';
+import { HealthMonitor } from '../../../monitor/health.js';
+
+const healthMonitor = new HealthMonitor();
 
 // ── Helpers ──
 
@@ -132,6 +135,25 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
       uptime: Math.floor((Date.now() - parseInt(process.env['RADAR__START_TIME'] ?? '0', 10)) / 1000),
       stats: await store.stats(),
     };
+  });
+
+  // ── GET /api/health/ready ──
+  app.get('/api/health/ready', async (_request, reply) => {
+    try {
+      const stats = await store.stats();
+      return { status: 'ready', db: 'pass', tables: Object.keys(stats).length };
+    } catch (err) {
+      return reply.status(503).send({ status: 'not_ready', db: 'fail', error: String(err) });
+    }
+  });
+
+  // ── GET /api/health/deep ──
+  app.get('/api/health/deep', async (_request, reply) => {
+    const health = await healthMonitor.check();
+    if (health.status === 'unhealthy') {
+      return reply.status(503).send(health);
+    }
+    return health;
   });
 
   // ── GET /api/tickers ──

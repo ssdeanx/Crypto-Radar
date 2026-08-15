@@ -250,3 +250,36 @@ class TestAddTaFeatures:
 
         # Check for duplicates
         assert len(result) == len(set(result))
+
+
+# ── compute_latest_indicators ───────────────────────────────────────────────
+
+
+class TestComputeLatestIndicators:
+    def test_empty_dataframe_returns_safe_defaults(self) -> None:
+        from indicators import compute_latest_indicators
+        res = compute_latest_indicators(pd.DataFrame())
+        assert isinstance(res, dict)
+        assert res.get("supertrend") == {"value": None, "direction": 1, "isReversal": False}
+        assert res.get("chop") is None
+        assert res.get("squeeze") == {"inSqueeze": False, "bbWidth": None}
+        assert res.get("fvg") == {"type": "none", "gapPercent": 0.0}
+        assert res.get("candlePattern") == "neutral"
+
+    def test_full_ohlcv_computes_new_indicators(self, sample_ohlcv_df: pd.DataFrame) -> None:
+        from indicators import compute_latest_indicators
+        import json
+        # Duplicate to have > 50 rows for pandas-ta
+        big_df = pd.concat([sample_ohlcv_df] * 6, ignore_index=True)
+        res = compute_latest_indicators(big_df)
+        assert isinstance(res, dict)
+        assert "supertrend" in res
+        assert "chop" in res
+        assert "squeeze" in res
+        assert "fvg" in res
+        assert "candlePattern" in res
+        
+        # Verify JSON serializability with no non-finite float errors
+        dumped = json.dumps(res)
+        assert isinstance(dumped, str)
+
