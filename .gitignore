@@ -14,6 +14,10 @@ catboost_info/
 .omo/
 .vml/
 uv.lock
+.terraform/
+infra/.terraform/
+*.tfstate
+*.tfstate.*
 
 .env
 
