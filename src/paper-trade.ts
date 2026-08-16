@@ -26,7 +26,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import * as path from 'node:path';
 import { loadConfig } from './core/config.js';
 import { logWarn } from './core/errors.js';
-import { mean, sampleStandardDeviation } from './math/index.js';
+import { mean, sampleStandardDeviation, computeKellyFraction } from './math/index.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Types
@@ -316,6 +316,11 @@ export class PaperTrader {
   /** Current cash balance */
   get cash(): number {
     return this.state.cash;
+  }
+
+  /** Profile name */
+  get profile(): string {
+    return this.profileName;
   }
 
   /** Trade history (read-only) */
@@ -934,8 +939,10 @@ export class PaperTrader {
         // Honour maxPositions: skip if already holding maxPositions distinct tokens
         if (this.state.holdings.length >= maxPositions) continue;
 
-        // Determine position size proportional to confidence
-        const alloc = Math.min(maxPerTrade, this.state.cash * conf);
+        // Determine position size using fractional Kelly criterion capped by maxPerTrade
+        const kellyFrac = computeKellyFraction(conf, 1.5, { fraction: 0.5, maxAllocation: 0.3 });
+        const targetAlloc = kellyFrac > 0 ? this.state.cash * kellyFrac : this.state.cash * conf * 0.1;
+        const alloc = Math.min(maxPerTrade, targetAlloc);
         if (alloc <= 0) continue;
 
         const amount = alloc / rec.currentPrice;

@@ -1,33 +1,34 @@
-# 🛰️ Crypto Radar — Production Data Pipeline SPEC
+# 🛰️ Crypto-Radar — Production Data Pipeline SPEC
 
 > **Project:** Multi-chain crypto market data collection pipeline  
-> **Status:** v2.8.1 · Production  (July 22, 2026)  
+> **Status:** v2.10.0 · Production (August 15, 2026)  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
 
 ## 1. Production Vision
 
-Crypto Radar is a **multi-chain crypto market data collection pipeline** that runs on a schedule (system cron or Cloud Scheduler) to fetch, compute, persist, and serve market intelligence data. It is implemented in TypeScript and runs as a compiled Node.js binary (`node dist/cli.js`).
+Crypto-Radar is a **multi-chain crypto market data collection and quantitative intelligence pipeline** that runs on a schedule (system cron or Cloud Scheduler) to fetch, compute, persist, and serve market intelligence data. It is implemented in TypeScript and runs as a compiled Node.js binary (`node dist/cli.js`).
 
 **What it does in production:**
 
-1. **Periodic data collection** — A cron job runs every hour (or configurable interval), fetching live prices, technical indicators, news, futures data, and on-chain metrics for 85 tracked tokens across 35 chains.
+1. **Periodic data collection** — A cron job runs every hour (or configurable interval), fetching live prices, technical indicators, news, futures data, and on-chain metrics for 149 tracked tokens across 50+ chains.
 2. **Persistent storage** — All collected data is written to a configurable data directory (`/data/crypto-radar/` by default) in multiple formats: CSV logs (append-only), JSONL datasets (ML-ready), SQLite database (structured queries), BigQuery (async enterprise data lake), and human-readable reports (`.txt`, `.md`, `.xlsx`).
-3. **Signal computation** — A 3-strategy composite signal engine (Momentum 40%, Mean Reversion 20%, Trend Following 40%) produces buy/sell/neutral signals with confidence scores.
-4. **ML predictions** — Optional CatBoost-based direction classifier with auto-retrain, concept drift detection, batch inference, and Gemini 3.1 Pro reasoning enrichment.
-5. **API serving** — A warm daemon or stateless Cloud Run server exposes a Fastify REST API (port 8080/9877) for querying collected and predicted data. Fastify is the sole API implementation.
-6. **Data retention** — Monthly archive compression, configurable log pruning (default 30 days), SHA-256 checksum verification on all log files.
+3. **Signal & Math computation** — A 3-strategy composite signal engine (Momentum 35%, Mean Reversion 20%, Trend Following 30%, Divergence 15%) enriched with a deep MathJS quantitative backbone: Markowitz Mean-Variance Portfolio Optimization, Spectral Eigendecomposition, 1st-order Markov Regime Switching, S/R Polynomial Curvature, Kalman Filtering, Hurst Exponent, and Fractional Kelly Sizing.
+4. **ML & Paper Agent pipelines** — CatBoost/LightGBM direction classifier with auto-retrain, concept drift detection, batch inference, River online learning, and telemetry-trained paper trading agent models.
+5. **AI Reasoning & Promptfoo Evals** — Vertex AI Gemini 3.1 Pro / local OpenAI-compatible inference with Autoevals factuality scoring and enterprise Promptfoo red-teaming/benchmarking.
+6. **API serving** — A warm daemon or stateless Cloud Run server exposes a Fastify REST API (port 8080/9877) for querying collected and predicted data. Fastify is the sole API implementation.
+7. **Data retention** — Monthly archive compression, configurable log pruning (default 30 days), SHA-256 checksum verification on all log files.
 
 **Key design tenets:**
 
 1. **Cron-first** — The primary production path is `scripts/crypto-radar-collector.sh` driven by system cron. All output formats are automatically saved to the data directory.
-2. **Multi-chain** — 35 chains: Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta, Dash, NEO, Internet Computer, Ethereum Classic + broader market.
+2. **Multi-chain** — 50+ chains: Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta, Dash, NEO, Internet Computer, Ethereum Classic + broader market.
 3. **No API keys required** — Uses public Binance REST API, RSS feeds, DeFiLlama (free), CoinGecko (free), and Jupiter DEX (free).
-4. **Self-contained** — Single compiled Node.js binary. No Hermes Agent, no Python runtime for core functionality (Python is ML-only).
-5. **Data-portable** — All persistent data resolves through a configurable data directory. Secondary legacy path auto-detected for migration.
-6. **Fastify-only API** — The legacy `src/api/rest.ts` REST handler has been removed. All HTTP serving goes through Fastify.
-7. **Cloud Run–ready** — Alpine-based Dockerfile (`node:22-alpine`) with `deploy.sh` automates Artifact Registry, Cloud Build, Cloud Run deploy, and Cloud Scheduler cron for managed serverless deployment. GCS bucket synchronization automatically saves/restores SQLite db files and CatBoost ML model assets.
+4. **Self-contained** — Single compiled Node.js binary. No external runtime needed for core functionality.
+5. **Data-portable** — All persistent data resolves through a configurable data directory.
+6. **Fastify-only API** — High-performance REST API with Swagger documentation and rate limiting.
+7. **Cloud Run–ready** — Dockerfile with `deploy.sh` automates Artifact Registry, Cloud Build, Cloud Run deploy, and Cloud Scheduler cron for managed serverless deployment. GCS bucket synchronization automatically saves/restores SQLite db files and CatBoost ML model assets.
 
 ---
 
@@ -37,27 +38,41 @@ Crypto Radar is a **multi-chain crypto market data collection pipeline** that ru
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                          Crypto Radar (Production Pipeline)                  │
+│                         Crypto-Radar (Production Pipeline)                   │
 │                                                                              │
 │  ┌──────────────────────────────────────────────────────────────────────┐   │
-│  │  dist/cli.js  (Compiled TypeScript, 65+ source modules)               │   │
+│  │  dist/cli.js  (Compiled TypeScript, 95+ source modules)               │   │
 │  │                                                                        │   │
 │  │  src/ root-level modules:                                              │   │
 │  │  ├── cli.ts          (Commander.js CLI — dev-only)                     │   │
 │  │  ├── index.ts        (Public API exports)                              │   │
 │  │  ├── types.ts        (Chain, Kline, TokenSignal types)                 │   │
-│  │  ├── tokens.ts       (Token registry — 85 tokens, 35 chains)         │   │
+│  │  ├── tokens.ts       (Token registry — 149 tokens, 50+ chains)         │   │
 │  │  ├── binance.ts      (Binance REST client — ticker + klines)          │   │
 │  │  ├── indicators.ts   (28 technical indicators)                         │   │
 │  │  ├── onchain.ts      (DeFiLlama integration — TVL, fees, prices)      │   │
 │  │  ├── news.ts         (RSS news fetcher — 28 feeds, relevance scoring) │   │
 │  │  ├── signals.ts      (Composite signal scoring + on-chain boost)      │   │
-│  │  ├── gemini.ts       (Vertex AI Gemini 3.1 Pro reasoning enrichment)  │   │
 │  │  ├── radar.ts        (Data enrichment pipeline — the core engine)     │   │
 │  │  ├── output.ts       (Formatters — table, JSONL, JSON, CSV, MD)       │   │
-│  │  ├── coingecko.ts    (CoinGecko fallback price source)                │   │
-│  │  ├── collector.ts    (Historical kline backfill to SQLite)            │   │
 │  │  ├── paper-trade.ts  (Paper trading portfolio simulation)             │   │
+│  │                                                                        │   │
+│  │  src/math/ modules (Quantitative MathJS Backbone):                     │   │
+│  │  ├── markowitz.ts    (Markowitz Mean-Variance Sharpe Optimizer)        │   │
+│  │  ├── spectral.ts     (Spectral Eigendecomposition & PCA Factors)       │   │
+│  │  ├── markov.ts       (Markov Regime Transition Matrix & Stationary)    │   │
+│  │  ├── curve-fit.ts    (Polynomial S/R Curvature & Inflection Solver)    │   │
+│  │  ├── bignum.ts       (BigNumber Arbitrary-Precision Compounder)        │   │
+│  │  ├── risk.ts         (Kelly Criterion & Volatility ATR Sizing)         │   │
+│  │  ├── portfolio.ts    (Covariance, Correlation & Risk Parity Weights)   │   │
+│  │  ├── filtering.ts    (Kalman Filter, MAD Z-Scores & Hurst Exponent)    │   │
+│  │  └── eval.ts         (Brier, ECE, Sharpe/Sortino/Calmar, MFE/MAE)      │   │
+│  │                                                                        │   │
+│  │  src/analysis/ modules (AI Reasoning & Evaluation):                   │   │
+│  │  ├── engine.ts       (Multi-strategy Signal Engine)                    │   │
+│  │  ├── ai-eval.ts      (Autoevals Factuality & Indicator Consistency)    │   │
+│  │  ├── agent-eval.ts   (Paper Trading Agent Scorecard Generator)         │   │
+│  │  └── promptfoo-provider.ts (Custom TypeScript Provider for Promptfoo)  │   │
 │  │  ├── backtest.ts     (Strategy backtesting + weight optimization)     │   │
 │  │  ├── daemon.ts       (Warm HTTP daemon — Fastify server)              │   │
 │  │  ├── jupiter.ts      (Jupiter DEX price aggregator — Solana)          │   │

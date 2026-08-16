@@ -21,6 +21,7 @@
 import { Command } from 'commander';
 import { PaperTrader, createPaperTrader, listProfiles, getActiveProfileName, expandHome } from './paper-trade.js';
 import type { PaperTraderConfig, PaperTrade, PerformanceReport, PortfolioHolding } from './paper-trade.js';
+import { evaluateAgentPerformance } from './analysis/agent-eval.js';
 import { loadConfig } from './core/config.js';
 import { logger } from './core/logger.js';
 
@@ -430,6 +431,58 @@ export function createPaperTradeCommand(): Command {
         logger.stdout(`\n📊 Exported ${lineCount} dataset rows to: ${targetOut}`);
       } catch (err) {
         logger.error('[ERROR] Export failed:', { message: err instanceof Error ? err.message : String(err) });
+        process.exit(1);
+      }
+    });
+
+  // ── eval command ──
+  cmd
+    .command('eval')
+    .description('Evaluate trading agent accuracy, calibration, and risk metrics')
+    .option('--profile <name>', 'Profile name to evaluate (default: active profile)')
+    .option('--json', 'Output scorecard as raw JSON')
+    .action(async (opts) => {
+      try {
+        const trader = await loadPaperTrader(opts.profile);
+        const card = evaluateAgentPerformance(trader.profile, trader.trades, trader.startBalance);
+
+        if (opts.json) {
+          logger.stdout(JSON.stringify(card, null, 2));
+          return;
+        }
+
+        logger.stdout('\n═══════════════════════════════════════════════════════════════════════');
+        logger.stdout(` 🎯 Trading Agent Performance Scorecard: ${card.profileName}`);
+        logger.stdout('═══════════════════════════════════════════════════════════════════════\n');
+
+        logger.stdout(`   Total Trades:       ${card.totalTrades} (${card.completedTrades} completed)`);
+        logger.stdout(`   Win Rate:           ${card.winRatePct}%`);
+        logger.stdout(`   Profit Factor:      ${card.profitFactor}`);
+        logger.stdout(`   Expectancy:         $${card.expectancyUsd.toFixed(2)} per trade`);
+        logger.stdout(`   Realized P&L:       $${card.totalRealizedPnlUsd.toFixed(2)}`);
+        logger.stdout(`   Total Fees Paid:    $${card.totalFeeUsd.toFixed(2)}\n`);
+
+        logger.stdout(' ── Risk & Calibration ──');
+        logger.stdout(`   Sharpe Ratio:       ${card.sharpeRatio}`);
+        logger.stdout(`   Sortino Ratio:      ${card.sortinoRatio}`);
+        logger.stdout(`   Calmar Ratio:       ${card.calmarRatio}`);
+        logger.stdout(`   Max Drawdown:       ${card.maxDrawdownPct}%`);
+        logger.stdout(`   Brier Score:        ${card.brierScore} (0.0=perfect, 0.25=random)`);
+        logger.stdout(`   Calibration (ECE):  ${card.expectedCalibrationError}\n`);
+
+        logger.stdout(' ── Execution Quality ──');
+        logger.stdout(`   Avg Hold Time:      ${card.avgHoldingDurationMinutes} mins`);
+        logger.stdout(`   Avg MFE / MAE:      +${card.avgMfePercent}% / -${card.avgMaePercent}% (Ratio: ${card.mfeToMaeRatio})\n`);
+
+        if (Object.keys(card.regimeBreakdown).length > 0) {
+          logger.stdout(' ── Regime Breakdown ──');
+          for (const [r, stat] of Object.entries(card.regimeBreakdown)) {
+            logger.stdout(`   * ${r.toUpperCase().padEnd(12)}: ${stat.trades} trades | Win: ${stat.winRatePct}% | PnL: $${stat.pnlUsd}`);
+          }
+          logger.stdout('');
+        }
+      } catch (err) {
+        logger.error('[ERROR] Evaluation failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });

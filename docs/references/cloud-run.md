@@ -2,10 +2,10 @@
 
 > Google Cloud Run is a fully managed serverless platform for running containerized applications on Google's scalable infrastructure. It abstracts away infrastructure management, scales automatically (including to zero), and bills per-use.
 
-**Official docs:** https://cloud.google.com/run/docs  
-**Pricing:** https://cloud.google.com/run/pricing  
-**Container runtime contract:** https://cloud.google.com/run/docs/container-contract  
-**Resource model:** https://cloud.google.com/run/docs/overview/what-is-cloud-run
+**Official docs:** <https://cloud.google.com/run/docs>
+**Pricing:** <https://cloud.google.com/run/pricing>
+**Container runtime contract:** <https://cloud.google.com/run/docs/container-contract>
+**Resource model:** <https://cloud.google.com/run/docs/overview/what-is-cloud-run>
 
 ---
 
@@ -30,7 +30,7 @@
 Cloud Run offers three resource types for running code, all sharing the same sandboxed container execution environment.
 
 | Resource | Description | Use Case |
-|---|---|---|
+| --- | --- | --- |
 | **Service** | Responds to HTTP requests at a stable HTTPS endpoint. Stateless instances autoscale based on request volume, CPU, or events. | APIs, web apps, Pub/Sub push subscriptions, Eventarc-triggered functions, AI inference endpoints |
 | **Job** | Executes tasks that run to completion. Can be run manually, on a schedule (via Cloud Scheduler + Workflows), or as part of a workflow. Parallelizable via array jobs. | Batch processing, ETL, database migrations, model training, scheduled data transformations |
 | **Worker pool** | Always-on background processing. No HTTP endpoint. Pull-based workloads (Kafka, Pub/Sub pull, RabbitMQ). Manually or externally scaled. | Pub/Sub pull subscribers, Kafka consumers, message queue processors |
@@ -48,7 +48,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Supported Images
 
 | Requirement | Detail |
-|---|---|
+| --- | --- |
 | Architecture | Linux x86_64 (linux/amd64) |
 | Image formats | Docker V2 Schema 1, Schema 2, OCI |
 | Compression | Zstd compressed images supported |
@@ -85,7 +85,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Environment Variables — Services
 
 | Variable | Description | Example |
-|---|---|---|
+| --- | --- | --- |
 | `PORT` | Port the HTTP server must listen on | `8080` |
 | `K_SERVICE` | Name of the Cloud Run service | `hello-world` |
 | `K_REVISION` | Name of the current revision | `hello-world.1` |
@@ -94,7 +94,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Environment Variables — Jobs
 
 | Variable | Description | Example |
-|---|---|---|
+| --- | --- | --- |
 | `CLOUD_RUN_JOB` | Name of the job | `hello-world` |
 | `CLOUD_RUN_EXECUTION` | Name of the execution | `hello-world-abc` |
 | `CLOUD_RUN_TASK_INDEX` | Index of this task (0-based) | `0` |
@@ -104,7 +104,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Environment Variables — Worker Pools
 
 | Variable | Description | Example |
-|---|---|---|
+| --- | --- | --- |
 | `CLOUD_RUN_WORKER_POOL` | Name of the worker pool | `hello-world` |
 | `CLOUD_RUN_REVISION` | Name of the running revision | `hello-world.1` |
 
@@ -119,7 +119,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Instance Lifecycle — Services
 
 | Phase | Detail |
-|---|---|
+| --- | --- |
 | **Startup** | Must become healthy within **4 minutes**. CPU allocated during startup. Startup CPU boost available. |
 | **Request pending** | Requests wait up to **3.5× avg startup time or 10s** (whichever is greater) while an instance starts. |
 | **Processing** | CPU allocated while handling requests (request-based billing) or always (instance-based billing). |
@@ -155,7 +155,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Min / Max Instances
 
 | Setting | Effect | Default |
-|---|---|---|
+| --- | --- | --- |
 | `min-instances` | Keep N instances always warm. Prevents cold starts. **Requires instance-based billing.** | `0` (scale to zero) |
 | `max-instances` | Hard cap on concurrent instances. Controls cost and downstream load. | `1000` (default quota) |
 
@@ -172,7 +172,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ### Cold Starts
 
 | Language | Typical Cold Start |
-|---|---|
+| --- | --- |
 | **Go** | ~200-400ms |
 | **Node.js** | ~1-2s |
 | **Python** | ~500ms-2s |
@@ -193,7 +193,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 ## Limitations & Constraints
 
 | Constraint | Limit | Notes |
-|---|---|---|
+| --- | --- | --- |
 | **Request timeout** | **60 minutes** | Configurable per service. Default 5 minutes. Set via `--timeout`. |
 | **Job timeout** | **24 hours** | Max execution time per task. |
 | **Response size** | 32 MB | Per response (after Cloud Run overhead) |
@@ -235,6 +235,7 @@ Cloud Run offers three resource types for running code, all sharing the same san
 Cloud Run supports mounting Cloud Storage buckets as volumes on Cloud Run services and jobs. This is the preferred way to persist files without using gcsfuse inside the container.
 
 **Key facts:**
+
 - Configured via the `--add-volume` and `--add-volume-mount` flags at deployment.
 - Volumes are mounted before the container starts.
 - Mounted buckets appear as a regular filesystem within the container.
@@ -243,9 +244,11 @@ Cloud Run supports mounting Cloud Storage buckets as volumes on Cloud Run servic
 - Access is governed by the **service identity** (service account) attached to the Cloud Run revision.
 
 **Workaround for older gcsfuse usage:**
+
 - If you need to run `gcsfuse` inside the container, run as root in the entrypoint, then `su` to the app user (because `setuid` is not supported).
 
 **Example deploy with volume mount:**
+
 ```bash
 gcloud run deploy myservice \
   --add-volume=name=myvol,bucket=my-bucket \
@@ -259,14 +262,14 @@ gcloud run deploy myservice \
 ### Two Identities
 
 | Identity | Description |
-|---|---|
+| --- | --- |
 | **Deployer account** | User or service account that deploys/manages Cloud Run resources. Needs `run.admin` or `run.developer`. |
 | **Service identity** | Service account that the running container uses to call Google Cloud APIs. |
 
 ### Key Roles
 
 | Role | Permission | Use |
-|---|---|---|
+| --- | --- | --- |
 | `roles/run.invoker` | `run.routes.invoke` | Allow unauthenticated or service-to-service invocation |
 | `roles/run.admin` | Full control | Deploy, manage, delete |
 | `roles/run.developer` | Deploy & modify | Cannot delete |
@@ -295,7 +298,7 @@ curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accoun
 ### Invocation Types
 
 | Method | Auth |
-|---|---|
+| --- | --- |
 | **Public (allow unauthenticated)** | Anyone with the URL, no IAM check |
 | **Private (require authentication)** | Must have `run.invoker` and send OAuth2/ID token |
 | **Ingress restricted** | Limit to internal (VPC) or internal+CLB traffic |
@@ -310,6 +313,7 @@ curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accoun
 - Determines if the container has started and is ready to serve.
 - If the startup probe fails, the instance is not sent traffic.
 - Configurable via `--startup-probe`:
+
   ```bash
   gcloud run deploy myservice \
     --startup-probe="/healthz" \
@@ -335,14 +339,14 @@ curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accoun
 ### Billing Models
 
 | Model | How It Works | Best For |
-|---|---|---|
+| --- | --- | --- |
 | **Request-based** (default) | Pay only when processing requests. Idle instances (no min-instances) not charged. Per-request fee. | Variable traffic, scale-to-zero workloads |
 | **Instance-based** | Pay for entire instance lifetime (1 min minimum). No per-request fee. | Min instances, always-on, high throughput, CPU-heavy workloads |
 
 ### Instance-based Pricing (us-central1)
 
 | Resource | Default | 1yr CUD | 3yr CUD |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | **CPU** (per vCPU-second) | `$0.000018` | `$0.00001494` | `$0.00001494` |
 | **Memory** (per GiB-second) | `$0.000002` | `$0.00000166` | `$0.00000166` |
 | **GPU (L4, no redundancy)** | `$0.0001867/s` | — | — |
@@ -351,7 +355,7 @@ curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accoun
 ### Request-based Pricing (us-central1)
 
 | Resource | Active Time | Idle Time (min-instances) |
-|---|---|---|
+| --- | --- | --- |
 | **CPU** (per vCPU-second) | `$0.000024` | `$0.0000025` |
 | **Memory** (per GiB-second) | `$0.0000025` | `$0.0000025` |
 | **Requests** (per million) | `$0.40` | N/A |
@@ -361,14 +365,14 @@ curl "http://metadata.google.internal/computeMetadata/v1/instance/service-accoun
 Same as instance-based pricing for services. No per-request fee.
 
 | Resource | Default |
-|---|---|
+| --- | --- |
 | **CPU** (per vCPU-second) | `$0.000018` |
 | **Memory** (per GiB-second) | `$0.000002` |
 
 ### Worker Pool Pricing (us-central1)
 
 | Resource | Default |
-|---|---|
+| --- | --- |
 | **CPU** (per vCPU-second) | `$0.000011244` |
 | **Memory** (per GiB-second) | `$0.000001235` |
 
@@ -393,34 +397,38 @@ Same as instance-based pricing for services. No per-request fee.
 Free tier allocation (per billing account, resets monthly, aggregated across projects):
 
 ### Services (Instance-based billing)
+
 | Resource | Free Tier | Equivalent Runtime |
-|---|---|---|
+| --- | --- | --- |
 | **CPU** | 240,000 vCPU-seconds/mo | ~66.7 hours of 1 vCPU |
 | **Memory** | 450,000 GiB-seconds/mo | ~125 hours of 1 GiB |
 
 ### Services (Request-based billing)
+
 | Resource | Free Tier | Equivalent |
-|---|---|---|
+| --- | --- | --- |
 | **CPU** | 180,000 vCPU-seconds/mo | ~50 hours of 1 vCPU active |
 | **Memory** | 360,000 GiB-seconds/mo | ~100 hours of 1 GiB active |
 | **Requests** | 2 million requests/mo | ~66,666 req/day |
 
 ### Jobs
+
 | Resource | Free Tier |
-|---|---|
+| --- | --- |
 | **CPU** | 240,000 vCPU-seconds/mo |
 | **Memory** | 450,000 GiB-seconds/mo |
 
 ### Worker Pools
+
 | Resource | Free Tier |
-|---|---|
+| --- | --- |
 | **CPU** | 384,204 vCPU-seconds/mo |
 | **Memory** | 728,744 GiB-seconds/mo |
 
 ### Crypto Radar Free Tier Feasibility
 
 | Scenario | Free Tier Covers? |
-|---|---|
+| --- | --- |
 | **Weekly deployment (build + run)** | ✅ Yes — 1 deploy/week is negligible |
 | **1 API endpoint, scale-to-zero, 10k req/mo** | ✅ Yes — well within free tier |
 | **Scheduled job runs daily (1 vCPU, 1 GiB, 5 min)** | ✅ Yes — ~150 min/mo = ~9,000 vCPU-s + 9,000 GiB-s |
@@ -540,7 +548,7 @@ gcloud run services update-traffic SERVICE_NAME \
 ### Estimated Monthly Costs (Beyond Free Tier)
 
 | Scenario | Configuration | Est. Monthly Cost |
-|---|---|---|
+| --- | --- | --- |
 | API, 100k req/mo, 200ms each, 1 vCPU, 512 MiB, request-based | ~5.6 active hours | **$0.00–0.50** (likely free) |
 | API, 10M req/mo, 400ms each, 1 vCPU, 512 MiB, concurrency=20 | Medium traffic | **~$13–20** |
 | Job, 1x/hr, 1 min, 1 vCPU, 512 MiB | 730 exec/mo | **~$0.00** (free tier covers) |

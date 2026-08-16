@@ -15,7 +15,7 @@ Google Cloud Scheduler is a fully managed cron service that executes jobs on a r
 ## Target Types
 
 | Target | Description | Use Case |
-|--------|-------------|----------|
+| -------- | ------------- | ---------- |
 | **HTTP/S** | Any publicly accessible HTTP/HTTPS endpoint | Triggering Cloud Run services, external APIs, webhooks |
 | **Pub/Sub** | Publish a message to a Pub/Sub topic | Event-driven fan-out, async processing pipelines |
 | **App Engine HTTP** | App Engine service within the same project | Legacy App Engine apps, same-project services |
@@ -48,7 +48,7 @@ Jobs use standard **unix-cron** compatible schedule strings:
 ### Examples
 
 | Schedule | Meaning |
-|----------|---------|
+| ---------- | --------- |
 | `0 */3 * * *` | Every 3 hours |
 | `0 1 * * *` | Daily at 1:00 AM |
 | `*/30 * * * *` | Every 30 minutes |
@@ -70,7 +70,7 @@ Use the `--time-zone` flag (or console Timezone selector) to set the timezone. D
 Cloud Scheduler supports two token types for authenticating to HTTP targets:
 
 | Token Type | Flag | When to Use |
-|-----------|------|-------------|
+| ----------- | ------ | ------------- |
 | **OIDC (OpenID Connect)** | `--oidc-service-account-email` | General-purpose, most HTTP targets |
 | **OAuth2 (Access Token)** | `--oauth-service-account-email` | Google APIs hosted on `*.googleapis.com` |
 
@@ -84,7 +84,7 @@ Cloud Scheduler supports two token types for authenticating to HTTP targets:
 ### Required IAM Roles for Targets
 
 | Target | IAM Role |
-|--------|----------|
+| -------- | ---------- |
 | Cloud Run | `roles/run.invoker` |
 | Cloud Run functions (2nd gen) | `roles/run.invoker` |
 | Cloud Run functions (1st gen) | `roles/cloudfunctions.invoker` |
@@ -132,7 +132,7 @@ Jobs that don't complete successfully are retried with **exponential backoff** a
 ### Retry Parameters
 
 | Parameter | Flag | Default | Description |
-|-----------|------|---------|-------------|
+| ----------- | ------ | --------- | ------------- |
 | Min backoff | `--min-backoff` | `5s` | Initial delay before first retry |
 | Max backoff | `--max-backoff` | `3600s` (1h) | Maximum delay between retries |
 | Max doublings | `--max-doublings` | `5` | Times the interval doubles before becoming constant |
@@ -152,6 +152,7 @@ All duration values accept unit suffixes: `h`, `m`, `s`, `ms`, `us`, `ns`.
 ### Configuring Retries (Console)
 
 In the "Configure optional settings" section when creating a job:
+
 - **Max retry duration:** supports `h`, `m`, `s`
 - **Min/Max backoff duration:** supports full set (`h`, `m`, `s`, `ms`, `us`, `ns`)
 - Negative and fractional values are not allowed
@@ -163,7 +164,7 @@ In the "Configure optional settings" section when creating a job:
 ### Predefined Roles
 
 | Role | Purpose |
-|------|---------|
+| ------ | --------- |
 | `roles/cloudscheduler.admin` | Full admin access to Cloud Scheduler |
 | `roles/cloudscheduler.viewer` | Read-only access to jobs |
 | `roles/cloudscheduler.serviceAgent` | Service agent (auto-granted, do not revoke) |
@@ -181,7 +182,7 @@ service-PROJECT_NUMBER@gcp-sa-cloudscheduler.iam.gserviceaccount.com
 ## Pricing
 
 | Item | Cost |
-|------|------|
+| ------ | ------ |
 | **Per job (beyond free tier)** | **$0.10 per job per month** |
 | **Free tier** | **3 free jobs per billing account** (not per project) |
 | Proration | Billed daily: ~$0.003/day per paid job |
@@ -206,7 +207,7 @@ service-PROJECT_NUMBER@gcp-sa-cloudscheduler.iam.gserviceaccount.com
 ### Job Management Commands
 
 | Command | Purpose |
-|---------|---------|
+| --------- | --------- |
 | `gcloud scheduler jobs create http` | Create HTTP target job |
 | `gcloud scheduler jobs create pubsub` | Create Pub/Sub target job |
 | `gcloud scheduler jobs create app-engine` | Create App Engine target job |
@@ -303,7 +304,7 @@ if not cache.has(dedup_key):
 ### Typical Setup
 
 | Setting | Value |
-|---------|-------|
+| --------- | ------- |
 | **Target URL** | `https://SERVICE-abcdef-uc.a.run.app/api/cron/scan` |
 | **HTTP Method** | `POST` |
 | **Schedule** | `*/15 * * * *` (every 15 min) or `0 */1 * * *` (hourly) |
@@ -345,6 +346,7 @@ gcloud scheduler jobs create http crypto-radar-scan \
 Cloud Scheduler is available in **all Google Cloud regions** for HTTP/S and Pub/Sub targets.
 
 For **App Engine HTTP** targets:
+
 - The job must be created in the **same region as the App Engine app**.
 - A GCP project can only have one App Engine app region (set at creation, immutable).
 
@@ -353,7 +355,7 @@ For **App Engine HTTP** targets:
 ## Limits & Quotas
 
 | Resource | Limit |
-|----------|-------|
+| ---------- | ------- |
 | Max retry attempts | 0–5 |
 | Max URL length | 2083 characters (after encoding) |
 | Concurrent execution | Single instance per job (subsequent runs skipped) |

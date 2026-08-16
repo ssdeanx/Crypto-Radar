@@ -1,14 +1,15 @@
 ---
 name: crypto-radar
-description: "🛰️ Enterprise-grade multi-chain crypto market intelligence for Hermes Agent — tracks 49 tokens across 31 chains with 26 technical indicators, divergence detection, ADX trend filter, RSS news aggregation from 11 feeds, DeFiLlama on-chain metrics, WebSocket real-time prices, warm daemon for sub-50ms tool calls, SVG candlestick/dashboard charts, and XLSX/CSV/JSON/MD/HTML export. 8 full-spectrum agent tools for token scanning, signal generation, news analysis, chart rendering, daemon management, on-chain queries, and real-time price streams."
-context: This is an enterprise-grade multi-chain crypto market intelligence plugin for Hermes Agent, providing comprehensive tools for token scanning, signal generation, news analysis, chart rendering, daemon management, on-chain queries, and real-time price streams. It tracks 49 tokens across 31 chains with 26 technical indicators, divergence detection, ADX trend filter, RSS news aggregation from 11 feeds, DeFiLlama on-chain metrics, WebSocket real-time prices, warm daemon for sub-50ms tool calls, SVG candlestick/dashboard charts, and XLSX/CSV/JSON/MD/HTML export.
+description: Use when querying multi-chain crypto market intelligence, calculating 28 technical indicators across 149 tokens and 50+ chains, generating 4-strategy composite trading signals, performing institutional quantitative portfolio optimization (Markowitz, Spectral PCA, Markov regimes, polynomial S/R curvature, fractional Kelly sizing), executing paper trading simulations, training ML models, evaluating LLM intelligence with Promptfoo, deploying to Google Cloud Run, configuring Cloud Scheduler cron jobs, managing BigQuery datasets, or integrating the backend with separate frontend dashboards.
+context: Enterprise-grade multi-chain crypto intelligence, quantitative analytics, and algorithmic signal engine deployed on Google Cloud Run with BigQuery, Vertex AI, and Cloud Scheduler.
 argument-hint: crypto-radar <tool> [options]
 metadata: 
-  keywords: [crypto, trading, binance, defi, signals, technical-analysis, hermes-plugin, market-intelligence, enterprise]
-  name: Hermes Crypto Radar
-  author: Sam
-  version: 2.3.0
+  keywords: [crypto, trading, binance, defi, signals, technical-analysis, market-intelligence, enterprise, mathjs, portfolio-optimization, quantitative, promptfoo, paper-trading, fastify, cloud-run, bigquery, gcp, cloud-scheduler, vertex-ai]
+  name: Crypto-Radar
+  author: ssdeanx
+  version: 2.10.0
 user-invocable: true
+license: MIT
 compatibility:
   hermes: ">=0.1.0"
   node: ">=22.0.0"
@@ -16,223 +17,201 @@ compatibility:
 disable-model-invocation: false
 ---
 
-# 🛰️ Hermes Crypto Radar
+# 🛰️ Crypto-Radar Agent Skill & Production Reference
 
-**Enterprise-grade multi-chain crypto market intelligence — Hermes Agent plugin**
-
----
-
-## ✨ Features
-
-```
-📊  49 tokens  ·  31 chains  ·  26 technical indicators
-🧠  3-strategy signal engine with divergence detection + ADX trend filter
-🤖  CatBoost ML direction classifier with SHAP explanations + ensemble voting
-📰  11 RSS news feeds with relevance scoring + sentiment analysis
-⛓️  DeFiLlama on-chain metrics (protocol TVL, chain TVL, DEX fees)
-📈  SVG candlestick/dashboard charts with shared-svg.ts rendering engine
-💾  XLSX/CSV/JSON/MD/HTML export with frozen headers + conditional formatting
-🥇  Warm daemon for sub-50ms tool calls with TCP keep-alive
-🔄  Concept drift detection with auto-retrain trigger (ADWIN/PageHinkley/KSWIN)
-⚡  River online learning layer for real-time model updates
-🔬  Backtesting engine, correlation matrix, candlestick pattern recognition
-🛡️  Circuit breaker, rate limiter, log rotation, SHA-256 checksums
-🔌  8 full-spectrum agent tools + ML API returning structured JSON for agent reasoning
-```
-
-## 🛠️ Tools (8 agent tools)
-
-| Tool | Description |
-|------|-------------|
-| `crypto_radar_scan` | 🛰️ Full market scan — auto-dynamic top-30 tokens by volume, 26 indicators, on-chain metrics |
-| `crypto_radar_signals` | 🚀 Composite trading signals from 3-strategy engine + divergence + ADX filter |
-| `crypto_radar_news` | 📰 11 RSS feeds with relevance scoring, sentiment, dedup, poison filtering |
-| `crypto_radar_tokens` | 📋 Query by chain, symbol, or ID — 49 tokens across 31 chains |
-| `crypto_radar_chart` | 📊 SVG candlestick/line/multi-panel dashboard with responsive viewBox |
-| `crypto_radar_daemon` | ⚙️ Start/stop/status warm daemon (<50ms cached responses) |
-| `crypto_radar_onchain` | ⛓️ DeFiLlama protocol TVL, chain TVL, DEX fees |
-| `crypto_radar_ws` | 🔌 Real-time WebSocket price streams on port 9878 |
+> **Enterprise-grade multi-chain crypto market intelligence, quantitative analytics, and algorithmic trading signal engine deployed on Google Cloud Run with BigQuery, GCS, Cloud Scheduler, and Vertex AI.**
 
 ---
 
-## 📦 Installation
+## 📚 Complete Technical Reference Library (`docs/references/`)
 
-### ML Pipeline Architecture
+All architecture designs, REST API schemas, mathematical proofs, cloud infrastructure configurations, and frontend synchronization guides are documented in the [`docs/references/`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references) directory:
 
-```mermaid
-flowchart TB
-    subgraph Data["Data Layer"]
-        A[Klines<br/>Binance] --> B[Feature Engineering<br/>80+ features]
-        C[26 Indicators<br/>+ 12 TA indicators] --> B
-        D[Cross-Asset<br/>Funding Rate<br/>Order Book] --> B
-        E[Forward Returns] --> F[Label Generation<br/>Volatility-adjusted]
-        F --> G[Dataset Assembly<br/>Z-score normalization]
-        B --> G
-    end
+### 1. API, Frontend & Engine Specifications
+| Reference Document | Direct Link | Scope & Content |
+| :--- | :--- | :--- |
+| **[REST API Reference](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/api-reference.md)** | [`docs/references/api-reference.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/api-reference.md) | Complete Fastify REST routes (`/api/tickers`, `/api/signals`, `/api/klines/:symbol`, `/api/indicators/:symbol`, `/api/paper/*`, `/api/ml/*`, `/api/cron/*`), Swagger schemas, and query parameters. |
+| **[Frontend Integration Guide](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/frontend-integration.md)** | [`docs/references/frontend-integration.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/frontend-integration.md) | Frontend architecture for React/Vite/Next.js dashboards, TanStack Query polling hooks, paper order mutations, and UI blueprints. |
+| **[Quantitative Math Engine](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/math-engine.md)** | [`docs/references/math-engine.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/math-engine.md) | Markowitz Sharpe maximization, Duchi simplex projection, Spectral PCA eigendecomposition, Markov regime transition matrix, Vandermonde polynomial curve fitting, and BigNumber compounding. |
+| **[Machine Learning Pipeline](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/ml-pipeline.md)** | [`docs/references/ml-pipeline.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/ml-pipeline.md) | CatBoost & LightGBM batch training, Purged K-Fold CV, River streaming online updates, Optuna hyperparameter optimization, and ADWIN/Page-Hinkley drift detection. |
+| **[Strategy & Signal Engine](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/signal-engine.md)** | [`docs/references/signal-engine.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/signal-engine.md) | 4-strategy composite scoring (Momentum, Mean Reversion, Trend Following, Divergence), multi-timeframe weighted voting (15m, 1h, 4h, 1d), candlestick pattern recognition, and ATR risk bounds. |
+| **[Paper Trading & Telemetry](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/paper-trading.md)** | [`docs/references/paper-trading.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/paper-trading.md) | Account simulation, fractional Kelly sizing, slippage & fee mechanics, agent performance scorecards (Brier score, Sharpe, Sortino, MFE/MAE), and JSONL dataset export. |
+| **[Promptfoo AI Evals](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/promptfoo-evals.md)** | [`docs/references/promptfoo-evals.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/promptfoo-evals.md) | Promptfoo benchmark test matrix, custom TypeScript LLM provider, assertion checks, latency constraints, and Autoevals factuality scoring. |
 
-    subgraph Train["Training Pipeline"]
-        G --> H[Feature Selection<br/>SelectKBest MI]
-        H --> I[Correlation Filter<br/>>0.98 dropped]
-        I --> J[CatBoost Training<br/>GPU auto-detect]
-        J --> K[Optuna HPO<br/>TPE sampler]
-        J --> L[purgedcv CV<br/>Purge + embargo]
-        K --> M[Ensemble Voting<br/>N seeds → soft vote]
-        L --> M
-        M --> N[Calibration<br/>Isotonic Regression]
-        N --> O[SHAP Analysis<br/>Per-feature importance]
-        O --> P[MANIFEST.json<br/>Model registry]
-    end
+### 2. Google Cloud Platform (GCP) Production Architecture
+| GCP Reference | Direct Link | Scope & Content |
+| :--- | :--- | :--- |
+| **[Cloud Migration Plan](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/cloud-migration-plan.md)** | [`docs/cloud-migration-plan.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/cloud-migration-plan.md) | End-to-end master migration plan: stateless Cloud Run service, Pub/Sub event fan-out, Cloud Tasks queues, and BigQuery data pipeline. |
+| **[Google Cloud Run](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/cloud-run.md)** | [`docs/references/cloud-run.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/cloud-run.md) | Containerized Fastify deployment, autoscaling (0 to N instances), concurrency tuning, VPC connectors, health probes, and pricing analysis. |
+| **[Google Cloud Scheduler](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/cloud-scheduler.md)** | [`docs/references/cloud-scheduler.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/cloud-scheduler.md) | Automated cron triggers for market scanning (5m), signals (15m), news ingestion (30m), and daily ML model retraining. |
+| **[Google BigQuery](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/bigquery.md)** | [`docs/references/bigquery.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/bigquery.md) | Partitioned tables, streaming ingestion buffer, indicator schemas, and quantitative analytics queries. |
+| **[Google Cloud Storage (GCS)](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/cloud-storage.md)** | [`docs/references/cloud-storage.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/cloud-storage.md) | Model artifact registry (`.cbm`, `.txt`), daily kline archives, dataset snapshots, and lifecycle management. |
+| **[Google Artifact Registry](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/artifact-registry.md)** | [`docs/references/artifact-registry.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/artifact-registry.md) | Multi-stage Docker image builds, vulnerability scanning, and deployment digest pinning. |
+| **[Google Vertex AI](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/vertex-ai.md)** | [`docs/references/vertex-ai.md`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/docs/references/vertex-ai.md) | Custom GPU model training pipelines, hyperparameter tuning jobs, and Model Registry integration. |
 
-    subgraph Infer["Inference Pipeline"]
-        Q[Latest Klines] --> R[buildFeatures]
-        R --> S[Z-score Normalize]
-        S --> T{--explain?}
-        T -->|Yes| U[SHAP Explainer]
-        T -->|No| V[CatBoost Predict]
-        U --> V
-        V --> W[Prediction Result<br/>direction, confidence, explanation]
-    end
+---
 
-    subgraph Online["Online Learning"]
-        W --> X[SQLite predictions]
-        X --> Y[River LogisticRegression<br/>AdaptiveStandardScaler]
-        Y --> Z[Streaming Accuracy<br/>partial_fit / metrics]
-    end
+## 📦 Helper Scripts & Asset Payloads (`skills/crypto-radar/`)
 
-    subgraph Drift["Drift Detection"]
-        X --> AA[ADWIN / PageHinkley / KSWIN]
-        AA --> AB[Drift Events<br/>SQLite drift_events]
-        AB --> AC{Auto-Retrain?}
-        AC -->|Drift + 1h cooldown| H
-        X --> AD[Calibration Monitor<br/>ECE per bucket]
-    end
+In compliance with the **AgentSkills.io open standard**, the skill package includes runnable utilities and concrete JSON schema assets:
 
-    subgraph API["API & CLI"]
-        P --> AE[GET /api/ml/status]
-        P --> AF[GET /api/ml/models]
-        AB --> AG[GET /api/ml/drift]
-        X --> AH[GET /api/ml/predictions]
-        AD --> AI[GET /api/ml/calibration]
-        Z --> AJ[GET /api/ml/online]
-        AK[CLI: ml train|predict|status|drift] --> Train
-        AK --> Infer
-        AK --> Drift
-    end
-```
+- **Deployment Script**: [`skills/crypto-radar/scripts/deploy-cloud-run.sh`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/skills/crypto-radar/scripts/deploy-cloud-run.sh) (Automates Docker builds, Artifact Registry uploads, and Cloud Run deployments).
+- **Sample Tickers Payload**: [`skills/crypto-radar/assets/sample-tickers.json`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/skills/crypto-radar/assets/sample-tickers.json)
+- **Sample Signals Payload**: [`skills/crypto-radar/assets/sample-signals.json`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/skills/crypto-radar/assets/sample-signals.json)
+- **Sample Portfolio Payload**: [`skills/crypto-radar/assets/sample-portfolio.json`](file:///home/sam/Music/Crypto-Radar-Signals/Crypto-Radar/skills/crypto-radar/assets/sample-portfolio.json)
 
-### Linux / macOS (one-liner)
+---
 
-### Linux / macOS (one-liner)
+## 🚀 Production Deployment Runbook
+
+### Step 1: Google Cloud Environment & Artifact Registry Setup
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/ssdeanx/Hermes-Crypto-Radar/main/scripts/install.sh)
+# Set GCP Project and Region
+export PROJECT_ID="crypto-radar-prod"
+export REGION="us-central1"
+gcloud config set project $PROJECT_ID
+
+# Create Artifact Registry Docker repository
+gcloud artifacts repositories create crypto-radar \
+  --repository-format=docker \
+  --location=$REGION \
+  --description="Crypto-Radar production Docker images"
 ```
 
-### Windows (PowerShell)
-```powershell
-powershell -c "irm https://raw.githubusercontent.com/ssdeanx/Hermes-Crypto-Radar/main/scripts/install.ps1 | iex"
-```
-
-### Manual Hermes Agent install
+### Step 2: Build & Push Production Container Image
 ```bash
-git clone https://github.com/ssdeanx/Hermes-Crypto-Radar.git
-cd Hermes-Crypto-Radar
-npm install && npm run build
-ln -sf "$PWD" ~/.hermes/plugins/crypto-radar
+# Build container image via Google Cloud Build
+gcloud builds submit --tag $REGION-docker.pkg.dev/$PROJECT_ID/crypto-radar/service:v2.10.0 .
 ```
 
-### Via npm (standalone CLI)
+### Step 3: Deploy to Google Cloud Run
 ```bash
-npm install -g hermes-crypto-radar
-crypto-radar scan
+gcloud run deploy crypto-radar \
+  --image=$REGION-docker.pkg.dev/$PROJECT_ID/crypto-radar/service:v2.10.0 \
+  --region=$REGION \
+  --platform=managed \
+  --allow-unauthenticated \
+  --port=8080 \
+  --memory=2Gi \
+  --cpu=2 \
+  --min-instances=0 \
+  --max-instances=10 \
+  --concurrency=80 \
+  --timeout=300 \
+  --set-env-vars="NODE_ENV=production,RADAR_ENV=production,BIGQUERY_DATASET=crypto_radar,GCS_BUCKET=crypto-radar-models" \
+  --set-secrets="RADAR_API_KEY=radar-api-key:latest,CRON_SECRET=cron-secret:latest"
+```
+
+### Step 4: Configure Automated Cloud Scheduler Cron Jobs
+```bash
+export SERVICE_URL=$(gcloud run services describe crypto-radar --region=$REGION --format='value(status.url)')
+
+# 1. Market Ingestion & Tickers (Every 5 minutes)
+gcloud scheduler jobs create http radar-cron-scan \
+  --location=$REGION \
+  --schedule="*/5 * * * *" \
+  --uri="$SERVICE_URL/api/cron/scan" \
+  --http-method=POST \
+  --headers="x-api-key=CRON_SECRET" \
+  --attempt-deadline=180s
+
+# 2. Strategy Signal Generation (Every 15 minutes)
+gcloud scheduler jobs create http radar-cron-signals \
+  --location=$REGION \
+  --schedule="*/15 * * * *" \
+  --uri="$SERVICE_URL/api/cron/signals" \
+  --http-method=POST \
+  --headers="x-api-key=CRON_SECRET" \
+  --attempt-deadline=180s
+
+# 3. News Ingestion & Sentiment Analysis (Every 30 minutes)
+gcloud scheduler jobs create http radar-cron-news \
+  --location=$REGION \
+  --schedule="*/30 * * * *" \
+  --uri="$SERVICE_URL/api/cron/news" \
+  --http-method=POST \
+  --headers="x-api-key=CRON_SECRET" \
+  --attempt-deadline=180s
+
+# 4. Daily ML Model Retraining (Daily at midnight UTC)
+gcloud scheduler jobs create http radar-cron-retrain \
+  --location=$REGION \
+  --schedule="0 0 * * *" \
+  --uri="$SERVICE_URL/api/cron/retrain" \
+  --http-method=POST \
+  --headers="x-api-key=CRON_SECRET" \
+  --attempt-deadline=600s
+```
+
+### Step 5: Initialize BigQuery Storage Tables
+```bash
+# Create BigQuery Dataset
+bq mk --location=$REGION --dataset $PROJECT_ID:crypto_radar
+
+# Tables are auto-partitioned by timestamp in src/store/bigquery.ts:
+# - crypto_radar.tickers (partitioned by DATE(timestamp))
+# - crypto_radar.signals (partitioned by DATE(timestamp))
+# - crypto_radar.news (partitioned by DATE(published_at))
+# - crypto_radar.paper_trades (partitioned by DATE(created_at))
 ```
 
 ---
 
-## ⏰ Cron Automation
+## 🛠️ Invocable Agent Tools
 
-The plugin ships with a production-ready collector script:
+| Tool | CLI Command | Description |
+| :--- | :--- | :--- |
+| `crypto_radar_scan` | `crypto-radar scan [options]` | Full market scan — tracks 149 tokens across 50+ chains, 28 indicators, on-chain metrics. |
+| `crypto_radar_signals` | `crypto-radar signals [options]` | Composite trading signals from 4-strategy engine + divergence + ADX trend filter + Kelly sizing. |
+| `crypto_radar_news` | `crypto-radar news [options]` | Aggregated crypto news from 28 RSS feeds with sentiment analysis and relevance scoring. |
+| `crypto_radar_tokens` | `crypto-radar tokens [options]` | Token registry query by symbol, name, chain, or contract address. |
+| `crypto_radar_chart` | `crypto-radar chart <symbol>` | Generates interactive SVG candlestick/indicator dashboard charts. |
+| `crypto_radar_daemon` | `crypto-radar daemon <start\|stop\|status>` | Manages the high-speed warm background daemon (<50ms response latency). |
+| `crypto_radar_onchain` | `crypto-radar onchain [options]` | Queries DeFiLlama protocol TVL, chain TVL, and DEX volume fees. |
 
+---
+
+## 🚀 Core Agent Workflows
+
+### 1. Market Scanning & Indicator Computation
 ```bash
-# Every 2 hours — zero token cost (no_agent=true)
-bash scripts/crypto-radar-collector.sh
+# Scan focus tokens across all timeframes (15m, 1h, 4h, 1d)
+crypto-radar scan --filter SOL BTC ETH AVAX --format table
 
-# Or manually:
-node dist/cli.js scan --dynamic 30 --onchain --no-news --format json --quiet
+# Full market scan with JSON output
+crypto-radar scan --limit 20 --format json
 ```
 
-For Hermes cron:
+### 2. Quantitative Portfolio Optimization (MathJS)
+```typescript
+import { computeOptimalPortfolio, computeEigenportfolios } from 'crypto-radar/math';
+
+// 1. Mean-Variance Maximum Sharpe Tangency Portfolio
+const allocation = computeOptimalPortfolio(expectedReturns, covarianceMatrix, 0.0);
+console.log('Optimal asset weights:', allocation.weights);
+
+// 2. Spectral Market Factor Decomposition
+const spectral = computeEigenportfolios(covarianceMatrix);
+console.log('Market Beta Factor:', spectral[0].weights);
+```
+
+### 3. Paper Trading Simulation & ML Dataset Export
 ```bash
-hermes cron create "0 */2 * * *" \
-  --script crypto-radar-collector.sh \
-  --no-agent \
-  --workdir /path/to/hermes-crypto-radar
+# Execute simulated paper trade
+crypto-radar paper buy --symbol SOL --amount 10 --reason "Bullish breakout above resistance"
+
+# Export paper trading telemetry dataset for machine learning
+crypto-radar paper export --format jsonl --output data/paper_trades.jsonl
+
+# Train supervised paper agent model
+npm run ml:train-paper-agent
 ```
 
----
-
-## 📋 CLI Commands
-
+### 4. Promptfoo Benchmark & AI Evaluation Matrix
 ```bash
-crypto-radar scan          # Full market scan (auto-dynamic)
-crypto-radar signals       # Composite trading signals
-crypto-radar news          # RSS news aggregation
-crypto-radar tokens        # List tracked tokens
-crypto-radar chart SOL     # SVG candlestick chart
-crypto-radar daemon        # Warm daemon management
-crypto-radar onchain       # DeFiLlama metrics
-crypto-radar health        # System health check
-crypto-radar backtest      # Strategy backtesting
-crypto-radar search        # Token search
-crypto-radar benchmark     # Performance benchmark
-crypto-radar export        # XLSX/CSV/JSON export
-crypto-radar ml train      # Train CatBoost direction classifier
-crypto-radar ml predict    # Run inference with optional SHAP explanations
-crypto-radar ml status     # Pipeline health, active model, drift events
-crypto-radar ml drift      # Detect concept drift (ADWIN/PageHinkley/KSWIN)
+# Run Promptfoo benchmark suite
+npm run eval:prompts
+
+# Open evaluation dashboard in browser
+npm run eval:view
 ```
-
----
-
-## ⚙️ Configuration
-
-Edit `radar.config.json` or use `RADAR__*` environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `RADAR__DATA_DIR` | `~/.hermes/data/crypto-radar` | Data/log directory |
-| `RADAR__DAEMON_PORT` | `9877` | Daemon HTTP port |
-| `RADAR__WS_PORT` | `9878` | WebSocket stream port |
-| `RADAR__LOG_LEVEL` | `info` | Log level (trace/debug/info/warn/error) |
-| `RADAR__CACHE_TTL_MS` | `300000` | Cache TTL in ms |
-| `RADAR__LOG_RETENTION_DAYS` | `30` | Auto-prune logs after N days |
-| `RADAR__WEBHOOK_URL` | — | Discord/Telegram webhook URL |
-| `RADAR__STRATEGY_WEIGHTS` | — | JSON strategy weight overrides |
-| `RADAR__TIMEFRAME_WEIGHTS` | — | JSON timeframe weight overrides |
-
----
-
-## 📄 Included Files
-
-```
-hermes-crypto-radar-2.0.0.tar.gz
-├── dist/                     # Compiled TypeScript
-├── plugin/                   # Python Hermes bridge
-├── plugin.yaml               # Plugin metadata
-├── package.json              # npm package
-├── README.md                 # Full documentation
-├── CHANGELOG.md              # Release history
-├── SPEC.md                   # Architecture & design
-├── LICENSE                   # MIT license
-├── SECURITY.md               # Vulnerability disclosure
-├── main-banner.png           # Project banner image
-└── scripts/
-    ├── install.sh            # Linux/macOS one-liner installer
-    ├── install.ps1           # Windows PowerShell installer
-    └── crypto-radar-collector.sh  # Cron automation script
-```
-
----
-
-## 📃 License
-
-MIT © Sam

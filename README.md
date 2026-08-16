@@ -1,29 +1,29 @@
 <p align="center">
-  <img src="main-banner.png" alt="Crypto Radar — Enterprise Crypto Market Intelligence" width="100%">
+  <img src="main-banner.png" alt="Crypto-Radar — Enterprise Crypto Market Intelligence" width="100%">
 </p>
 
 <p align="center">
-  <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/ci.yml"><img src="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/nightly-e2e.yml"><img src="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/nightly-e2e.yml/badge.svg" alt="Nightly E2E"></a>
+  <a href="https://github.com/ssdeanx/Crypto-Radar/actions/workflows/ci.yml"><img src="https://github.com/ssdeanx/Crypto-Radar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/ssdeanx/Crypto-Radar/actions/workflows/nightly-e2e.yml"><img src="https://github.com/ssdeanx/Crypto-Radar/actions/workflows/nightly-e2e.yml/badge.svg" alt="Nightly E2E"></a>
   <a href="https://www.npmjs.com/package/crypto-radar"><img src="https://img.shields.io/npm/v/crypto-radar?label=version&color=blue" alt="npm Version"></a>
   <a href="https://www.npmjs.com/package/crypto-radar"><img src="https://img.shields.io/npm/dm/crypto-radar?color=blue" alt="npm Downloads"></a>
   <br>
-  <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar"><img src="https://img.shields.io/github/stars/ssdeanx/Hermes-Crypto-Radar?style=flat&color=yellow" alt="GitHub Stars"></a>
+  <a href="https://github.com/ssdeanx/Crypto-Radar"><img src="https://img.shields.io/github/stars/ssdeanx/Crypto-Radar?style=flat&color=yellow" alt="GitHub Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-blue" alt="Node">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
-  <img src="https://img.shields.io/badge/coverage-90%25-brightgreen" alt="Coverage">
-  <img src="https://img.shields.io/badge/tests-1242%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/coverage-91%25-brightgreen" alt="Coverage">
+  <img src="https://img.shields.io/badge/tests-1279%20passed-brightgreen" alt="Tests">
 </p>
 
-<h1 align="center">🛰️ Crypto Radar</h1>
-<p align="center"><strong>Enterprise-grade multi-chain crypto market intelligence — standalone CLI daemon</strong></p>
-<p align="center"><strong>85 tokens across 35 chains with 28 technical indicators</strong> — 3-strategy signal engine, DeFiLlama on-chain metrics, Gemini AI reasoning, RSS news aggregation, SVG charts, CatBoost ML pipeline, Cloud Run deployment, BigQuery store, and a warm daemon for sub-50ms tool calls.</p>
+<h1 align="center">🛰️ Crypto-Radar</h1>
+<p align="center"><strong>Enterprise-grade multi-chain crypto market intelligence & quantitative analytics engine</strong></p>
+<p align="center"><strong>149 tokens across 50+ chains with 28 technical indicators & institutional MathJS backbone</strong> — Markowitz Mean-Variance Portfolio Optimization, Spectral Eigendecomposition, 1st-order Markov Regime Switching, S/R Polynomial Curvature, Kalman Filtering, Fractional Kelly Sizing, Promptfoo AI Evals, DeFiLlama on-chain metrics, Gemini reasoning, RSS news aggregation, SVG charts, CatBoost ML pipeline, Cloud Run deployment, BigQuery store, and a warm daemon for sub-50ms tool calls.</p>
 
 <p align="center">
   <a href="#-features">Features</a> •
   <a href="#-quick-start">Quick Start</a> •
-  <a href="#-why-crypto-radar">Why Crypto Radar?</a> •
+  <a href="#-why-crypto-radar">Why Crypto-Radar?</a> •
   <a href="#-use-cases">Use Cases</a> •
   <a href="#-architecture--data-flow">Architecture</a> •
   <a href="#-cli-reference">CLI Reference</a> •
@@ -40,10 +40,12 @@
 
 | Area | Highlights |
 |------|-----------|
-| **🪙 Token Coverage** | **85 tokens** across **35 chains** — Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta, Dash, NEO, Internet Computer, Ethereum Classic + dynamic top-75 volume detection with synthesized TokenDef fallback |
+| **🪙 Token Coverage** | **149 tokens** across **50+ chains** — Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta, Dash, NEO, Internet Computer, Ethereum Classic + dynamic top volume detection with synthesized TokenDef fallback |
 | **📊 Technical Indicators** | **28 indicators**: RSI (14), MFI (14), MACD (12/26/9), Bollinger Bands (20/2), ATR (14), OBV, SMA, EMA, Stochastic (%K/%D), Ichimoku Cloud, Williams %R (14), CMF (20), TSI (25/13), ADX (14), Parabolic SAR, CCI (20), Keltner Channels (20/2), ROC (12), VWAP, Force Index (13), ADL, Chaikin Oscillator (3/10), StochRSI (14/14/3/3), TRIX (15), KST, Elder-Ray (13), Fisher Transform (10), Mass Index (14) |
-| **🧠 Signal Engine** | 3 strategies: Momentum (40%), Mean Reversion (20%), Trend Following (40%) — ADX-adjusted weighted voting (±15pp), divergence detection (regular/hidden/subtle), 16 candlestick patterns, regime-adaptive weights (Trending 45/10/45, Ranging 15/60/25, Volatile 30/35/35), timeframe aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35), on-chain TVL boost (0–15pp), volume profile confirmation |
-| **🧠 ML Pipeline** | **CatBoost direction classifier** — 80+ features, 28 TA indicators, forward-return labels, volatility-adjusted thresholds, SHAP feature attribution per prediction, ensemble voting (N models), automated feature selection, probability calibration, auto-retrain daemon, online learning layer (River), concept drift detection with auto-retrain trigger, model registry (MANIFEST.json) with production promotion gates |
+| **📐 MathJS Quantitative Backbone** | Markowitz Mean-Variance Sharpe Optimization with long-only Simplex Projection, Spectral Eigendecomposition (`math.eigs`), 1st-order Markov Regime Transition Matrix with stationary distribution, Non-linear Polynomial S/R Curvature $(X^T X)^{-1} X^T y$, Zero-loss BigNumber trade compounding, 1D Kalman Filtering, MAD Robust Z-Scores, Hurst Exponent, Fractional Kelly Sizing ($f^*$), and Brier/ECE Calibration |
+| **🧠 Signal Engine** | 4 strategies: Momentum (35%), Mean Reversion (20%), Trend Following (30%), Divergence (15%) — ADX-adjusted weighted voting (±15pp), divergence detection (regular/hidden), 16 candlestick patterns, regime-adaptive weights (Trending 45/10/45, Ranging 15/60/25, Volatile 30/35/35), timeframe aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35), on-chain TVL boost (0–15pp), volume profile confirmation |
+| **🧠 ML & Paper Agent Pipeline** | **CatBoost & LightGBM classifiers** — 80+ features, forward-return labels, volatility-adjusted thresholds, SHAP feature attribution, ensemble voting, automated feature selection, probability calibration, River online learning, concept drift detection (ADWIN/Page-Hinkley), and paper trading agent training pipeline (`ml/train_paper_agent.py`) |
+| **🔍 Promptfoo AI Evals** | Automated red-teaming, structured trade signal JSON validation, concise market research assertions, custom TypeScript provider, and Autoevals factuality checks |
 | **🤖 Gemini AI Reasoning** | **Vertex AI Gemini 3.1 Pro** — generates professional market analysis and trading predictions using recent klines, prices, and technical signals. Stored in the `reasoning` field in the database. Integrated via `src/analysis/gemini.ts` |
 | **⏱️ Multi-Timeframe** | Parallel kline fetch across 15m, 1h, 4h, 1d intervals with weighted aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35) |
 | **⛓️ On-Chain Metrics** | DeFiLlama integration — protocol TVL, chain TVL, fees (1d/7d/30d) — boosts signal confidence 0–15% |

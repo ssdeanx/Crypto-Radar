@@ -57,6 +57,8 @@
     "docs:serve": "typedoc --watch",
     "benchmark": "node dist/cli.js benchmark",
     "backtest": "node dist/cli.js backtest",
+    "eval:prompts": "promptfoo eval",
+    "eval:view": "promptfoo view",
     "ml:status": "node dist/cli.js ml status",
     "ml:build-dataset": "node dist/ml/build-dataset-cli.js",
     "ml:train": "node dist/cli.js ml train",
@@ -165,11 +167,13 @@
     "@google-cloud/vertexai": "^1.12.0",
     "ai": "^7.0.66",
     "asciichart": "^1.5.25",
+    "autoevals": "^0.3.0",
     "bcrypt": "^6.0.0",
     "commander": "^15.0.0",
     "csv-stringify": "^6.8.3",
     "exceljs": "^4.4.0",
     "fastify": "^5.12.0",
+    "mathjs": "^15.2.0",
     "ml-matrix": "^6.15.0",
     "picocolors": "^1.1.1",
     "rss-parser": "^3.13.0",
@@ -190,10 +194,10 @@
     "prettier": "^3.9.6",
     "typedoc": "^0.28.20",
     "typescript": "^7.0.2",
-    "typescript-eslint": "^8.67.0",
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "uuid": ">=11.1.1"
+    "uuid": ">=11.1.1",
+    "typescript": "^7.0.2"
   }
 }

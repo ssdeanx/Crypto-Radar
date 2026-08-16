@@ -1,0 +1,15 @@
+{
+  "profile": "trader1",
+  "cash": 85400.20,
+  "holdings": [
+    {
+      "symbol": "SOL",
+      "quantity": 15.2,
+      "avgEntry": 150.00
+    }
+  ],
+  "pnl": 5400.00,
+  "winRate": 0.68,
+  "totalTrades": 25,
+  "startBalance": 100000
+}

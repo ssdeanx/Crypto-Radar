@@ -1,10 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Hermes Crypto Radar — Label Generation
+// Hermes Crypto Radar — Institutional Label Generation (Option A)
 // ═══════════════════════════════════════════════════════════════════════
 //
-// Computes forward-return labels at multiple horizons for supervised
-// learning. Handles class imbalance (F7) by exposing configurable
-// thresholds and class weights.
+// Computes forward-return labels, multi-horizon returns (15m, 1h, 4h, 24h),
+// Alpha vs. BTC benchmark, and Marcos López de Prado Triple-Barrier
+// labels (Take-Profit barrier, Stop-Loss barrier, Time-expiration barrier).
 // ═══════════════════════════════════════════════════════════════════════
 
 import type { KlineRow } from '../types.js';
@@ -27,12 +27,18 @@ export interface LabelOpts {
   /** Use volatility-adjusted threshold instead of fixed percentage.
    *  When enabled, noiseThreshold acts as a multiplier of ATR/close ratio. */
   useVolatilityThreshold?: boolean;
+  /** Optional Take-Profit ATR multiplier for Triple Barrier (default: 2.0) */
+  takeProfitAtrMultiplier?: number;
+  /** Optional Stop-Loss ATR multiplier for Triple Barrier (default: 1.0) */
+  stopLossAtrMultiplier?: number;
+  /** Vertical barrier / Max holding window in candles (default: 24) */
+  maxHoldingCandles?: number;
 }
 
 /**
  * Compute ATR(14) from kline data for volatility adjustment.
  */
-function computeAtr14(klines: KlineRow[]): number[] {
+export function computeAtr14(klines: KlineRow[]): number[] {
   const atrs: number[] = [];
   for (let i = 0; i < klines.length; i++) {
     if (i < 14) {
@@ -66,7 +72,8 @@ function computeAtr14(klines: KlineRow[]): number[] {
  * @param closes - Sorted array of closing prices (oldest first)
  * @param interval - Kline interval string
  * @param opts - Label options
- * @param klines - Optional full kline data for volatility-adjusted thresholds
+ * @param klines - Optional full kline data for volatility-adjusted thresholds & Triple-Barrier
+ * @param btcCloses - Optional benchmark closes for Alpha calculation
  * @returns Array of LabelRow with computed forward returns
  */
 export function computeLabels(
@@ -74,15 +81,19 @@ export function computeLabels(
   interval: string,
   opts: LabelOpts = {},
   klines?: KlineRow[],
+  btcCloses?: number[],
 ): LabelRow[] {
   const noiseThreshold = opts.noiseThreshold ?? DEFAULT_NOISE_THRESHOLD;
   const actualClassHorizon = opts.classHorizon ?? 5;
   const useVolatility = opts.useVolatilityThreshold ?? false;
+  const tpMultiplier = opts.takeProfitAtrMultiplier ?? 2.0;
+  const slMultiplier = opts.stopLossAtrMultiplier ?? 1.0;
+  const maxHolding = opts.maxHoldingCandles ?? 24;
 
   // Pre-compute ATR for volatility adjustment if klines are provided
+  const atrs = klines && klines.length >= 14 ? computeAtr14(klines) : [];
   const atrRatios: number[] = [];
-  if (useVolatility && klines && klines.length >= 14) {
-    const atrs = computeAtr14(klines);
+  if (useVolatility && klines && atrs.length > 0) {
     for (let i = 0; i < klines.length; i++) {
       const close = klines[i]?.close ?? 0;
       const ratio = close > 0 ? (atrs[i] ?? 0) / close : MIN_ATR_RATIO;
@@ -95,16 +106,60 @@ export function computeLabels(
   for (let i = 0; i < closes.length; i++) {
     const currentClose = closes[i]!;
 
-    // Compute each horizon explicitly to avoid dynamic key type issues
+    // Compute standard horizon returns
     const ret1 = i + 1 < closes.length ? (closes[i + 1]! - currentClose) / currentClose : null;
     const ret5 = i + 5 < closes.length ? (closes[i + 5]! - currentClose) / currentClose : null;
     const ret20 = i + 20 < closes.length ? (closes[i + 20]! - currentClose) / currentClose : null;
     const ret60 = i + 60 < closes.length ? (closes[i + 60]! - currentClose) / currentClose : null;
 
+    // Multi-horizon returns for Option A (15m, 1h, 4h, 24h approximation)
+    const ret15m = ret1;
+    const ret1h = ret5;
+    const ret4h = ret20;
+    const ret24h = ret60;
+
+    // Alpha vs BTC over 5-period horizon
+    let alphaVsBtc: number | null = null;
+    if (btcCloses && i + 5 < btcCloses.length && btcCloses[i]! > 0 && ret5 !== null) {
+      const btcRet5 = (btcCloses[i + 5]! - btcCloses[i]!) / btcCloses[i]!;
+      alphaVsBtc = Number((ret5 - btcRet5).toFixed(6));
+    }
+
     // Volatility-adjusted threshold: noiseThreshold × (ATR/close)
     const adjustedThreshold = useVolatility && i < atrRatios.length
       ? Math.max(noiseThreshold * atrRatios[i]!, MIN_ATR_RATIO)
       : noiseThreshold;
+
+    // Option A: Triple-Barrier Labeling
+    let barrierHit: -1 | 0 | 1 | null = null;
+    let rMultiple: number | null = null;
+
+    if (klines && i < klines.length) {
+      const currentAtr = (atrs[i] && atrs[i]! > 0) ? atrs[i]! : (currentClose * 0.02);
+      const upperBarrier = currentClose + (currentAtr * tpMultiplier);
+      const lowerBarrier = currentClose - (currentAtr * slMultiplier);
+      const maxWindow = Math.min(i + maxHolding, klines.length);
+
+      if (i + maxHolding < klines.length) {
+        let hit = 0 as -1 | 0 | 1;
+        for (let j = i + 1; j < maxWindow; j++) {
+          const k = klines[j]!;
+          if (k.high >= upperBarrier) {
+            hit = 1; // Take-Profit Hit
+            break;
+          }
+          if (k.low <= lowerBarrier) {
+            hit = -1; // Stop-Loss Hit
+            break;
+          }
+        }
+        barrierHit = hit;
+        const exitClose = klines[maxWindow - 1]?.close ?? currentClose;
+        const rawReturn = (exitClose - currentClose) / currentClose;
+        const riskUnit = (currentAtr * slMultiplier) / currentClose;
+        rMultiple = riskUnit > 0 ? Number((rawReturn / riskUnit).toFixed(2)) : 0;
+      }
+    }
 
     const row: LabelRow = {
       symbol: '',
@@ -119,9 +174,16 @@ export function computeLabels(
       label_direction_20: ret20 !== null ? (ret20 > adjustedThreshold ? 1 : ret20 < -adjustedThreshold ? -1 : 0) : null,
       label_direction_60: ret60 !== null ? (ret60 > adjustedThreshold ? 1 : ret60 < -adjustedThreshold ? -1 : 0) : null,
       label_class: null,
+      label_barrier_hit: barrierHit,
+      label_r_multiple: rMultiple,
+      alpha_vs_btc: alphaVsBtc,
+      ret_15m: ret15m,
+      ret_1h: ret1h,
+      ret_4h: ret4h,
+      ret_24h: ret24h,
     };
 
-    // F7: Tri-class label at the configured horizon
+    // Tri-class label at the configured horizon
     const classReturn = actualClassHorizon === 1 ? ret1
       : actualClassHorizon === 5 ? ret5
       : actualClassHorizon === 20 ? ret20
@@ -139,14 +201,6 @@ export function computeLabels(
 
 /**
  * Returns recommended class weights for imbalanced crypto datasets.
- *
- * F7 asymmetry: In crypto markets, false positives (buy signal when price
- * drops) are more costly than false negatives (missed opportunity). Training
- * should use class weights that penalize direction errors asymmetrically.
- *
- * - Down predictions get higher weight (penalize missing drops)
- * - Neutral gets lower weight (majority class, prevent overfitting)
- * - Up gets neutral weight
  */
 export function getDefaultClassWeights(): Record<string, number> {
   return {

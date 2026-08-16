@@ -108,8 +108,15 @@ export function assembleDataset(
       row[fn] = f[fn] ?? null;
     }
 
-    // Add label
+    // Add labels
     row.label_class = lbl.label_class;
+    if (lbl.label_barrier_hit !== undefined) row.label_barrier_hit = lbl.label_barrier_hit;
+    if (lbl.label_r_multiple !== undefined) row.label_r_multiple = lbl.label_r_multiple;
+    if (lbl.alpha_vs_btc !== undefined) row.alpha_vs_btc = lbl.alpha_vs_btc;
+    if (lbl.ret_15m !== undefined) row.ret_15m = lbl.ret_15m;
+    if (lbl.ret_1h !== undefined) row.ret_1h = lbl.ret_1h;
+    if (lbl.ret_4h !== undefined) row.ret_4h = lbl.ret_4h;
+    if (lbl.ret_24h !== undefined) row.ret_24h = lbl.ret_24h;
 
     joined.push(row);
   }
