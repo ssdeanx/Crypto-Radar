@@ -97,7 +97,7 @@ Key characteristics:
 - **Storage classes** optimize cost based on access frequency
 - **Object Lifecycle Management** for automatic transitions and deletions
 
-> Source: https://cloud.google.com/storage/docs/introduction
+> Source: <https://cloud.google.com/storage/docs/introduction>
 
 ---
 
@@ -109,7 +109,7 @@ A bucket is the fundamental container in Cloud Storage. All data is stored as ob
 buckets. Key properties:
 
 | Property | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | **Globally unique name** | Across all of Google Cloud, cannot be changed after creation |
 | **Location type** | Region, dual-region, or multi-region |
 | **Default storage class** | Objects inherit this unless overridden |
@@ -131,12 +131,13 @@ Bucket names must:
 ### Bucket Locations
 
 | Location Type | Description | Examples | SLA |
-|---------------|-------------|----------|-----|
+| --------------- | ------------- | ---------- | ----- |
 | **Region** | Data stored in a single geographic region | `us-central1` (Iowa), `europe-west1` (Belgium) | 99.9% |
 | **Dual-region** | Data stored across two regions within same continent | `nam4` (US), `eur4` (Europe) | 99.95% |
 | **Multi-region** | Data stored across multiple regions in a large geographic area | `us` (United States), `eu` (Europe) | 99.95% |
 
 **Choosing a location:**
+
 - **Region** — lowest latency for co-located compute, lowest cost, best for crypto ticker data near Cloud Run
 - **Dual-region** — higher availability with geo-redundancy
 - **Multi-region** — global access patterns (website serving, mobile apps)
@@ -175,7 +176,7 @@ gcloud storage buckets create gs://BUCKET_NAME \
 **Required IAM role:** `roles/storage.admin` on the project.
 **Key permissions:** `storage.buckets.create`, `storage.buckets.list` (for Console).
 
-> Source: https://cloud.google.com/storage/docs/creating-buckets
+> Source: <https://cloud.google.com/storage/docs/creating-buckets>
 
 ### Creating a Bucket (Console)
 
@@ -284,14 +285,14 @@ Before enabling on an existing bucket:
 2. **Assign IAM equivalents** to any users relying on object ACLs:
 
 | Object ACL Permission | Equivalent IAM Role |
-|------------------------|---------------------|
+| ------------------------ | --------------------- |
 | READER | `roles/storage.legacyObjectReader` |
 | OWNER | `roles/storage.legacyObjectOwner` |
 
-3. **Review default object ACL** and assign equivalent IAM bucket-level roles
-4. **Migrate data** with heterogeneous permissions into separate buckets
+1. **Review default object ACL** and assign equivalent IAM bucket-level roles
+2. **Migrate data** with heterogeneous permissions into separate buckets
 
-> Source: https://cloud.google.com/storage/docs/uniform-bucket-level-access
+> Source: <https://cloud.google.com/storage/docs/uniform-bucket-level-access>
 
 ---
 
@@ -326,7 +327,7 @@ gcloud storage buckets create gs://my-bucket \
 ```
 
 | Aspect | Flat Namespace | Hierarchical Namespace |
-|--------|---------------|----------------------|
+| -------- | --------------- | ---------------------- |
 | Directory listing | Prefix scan | Native directory listing |
 | Rename | Copy + delete | Atomic |
 | Performance at scale | Degrades with millions of objects under same prefix | Maintains performance |
@@ -398,14 +399,14 @@ gcloud storage buckets update gs://my-bucket --no-autoclass
 ### Storage Class Summary
 
 | Class | API Name | Min Duration | Retrieval Fee | Price/GB/mo | Use Case |
-|-------|----------|-------------|---------------|-------------|----------|
+| ------- | ---------- | ------------- | --------------- | ------------- | ---------- |
 | **Rapid** | `RAPID` | None | None | $0.090 | I/O-intensive, AI/ML, zonal |
 | **Standard** | `STANDARD` | None | None | $0.020 | Hot data, frequent access |
 | **Nearline** | `NEARLINE` | 30 days | Yes | $0.010 | Monthly access |
 | **Coldline** | `COLDLINE` | 90 days | Yes | $0.004 | Quarterly access |
 | **Archive** | `ARCHIVE` | 365 days | Yes | $0.0012 | Yearly/regulatory |
 
-> Source: https://cloud.google.com/storage/docs/storage-classes
+> Source: <https://cloud.google.com/storage/docs/storage-classes>
 
 ---
 
@@ -416,7 +417,7 @@ gcloud storage buckets update gs://my-bucket --no-autoclass
 Prices per GB per month (us-central1 region, Standard tier):
 
 | Class | Price/GB/month |
-|-------|----------------|
+| ------- | ---------------- |
 | Standard | **$0.020** |
 | Nearline | **$0.010** |
 | Coldline | **$0.004** |
@@ -426,7 +427,7 @@ Prices per GB per month (us-central1 region, Standard tier):
 ### Data Operation Costs
 
 | Operation Type | Standard | Nearline | Coldline | Archive |
-|---------------|----------|----------|----------|---------|
+| --------------- | ---------- | ---------- | ---------- | --------- |
 | Class A (writes, lists) | $0.05/10k ops | $0.10/10k ops | $0.10/10k ops | $0.50/10k ops |
 | Class B (reads) | $0.004/10k ops | $0.01/10k ops | $0.01/10k ops | $0.05/10k ops |
 | Free ops (per month) | 50k Class A + 50k Class B | — | — | — |
@@ -439,7 +440,7 @@ Prices per GB per month (us-central1 region, Standard tier):
 ### Network Egress Costs
 
 | Source | Destination | Cost |
-|--------|-------------|------|
+| -------- | ------------- | ------ |
 | GCS → Internet | Worldwide | $0.12/GB (first 1 TB/month) |
 | GCS → Internet | Worldwide | $0.11/GB (next 9 TB) |
 | GCS → GCP same region | Same region | **$0.00/GB (free)** |
@@ -460,7 +461,7 @@ remainder:
 Google Cloud Free Tier provides **always-free** Cloud Storage usage:
 
 | Free Tier Item | Limit |
-|----------------|-------|
+| ---------------- | ------- |
 | **Standard Storage** | **5 GB** per month per account |
 | Class A operations | **50,000** per month |
 | Class B operations | **50,000** per month |
@@ -470,19 +471,21 @@ Google Cloud Free Tier provides **always-free** Cloud Storage usage:
 **Always-free** means this never expires — even after the 90-day Free Trial ends, as long as you
 stay within limits.
 
-> Source: https://cloud.google.com/free/docs/gcp-free-tier
+> Source: <https://cloud.google.com/free/docs/gcp-free-tier>
 
 ### Free Tier Focus: Staying Within Free Tier for Crypto Radar
 
 For a crypto ticker data pipeline, the free tier covers a meaningful amount of data:
 
 **Storage budget: 5 GB**
+
 - A CSV ticker row is ~100 bytes
 - With 15-second intervals across 100 pairs: ~57 MB/day, ~1.7 GB/month
 - With 1-minute intervals across 20 pairs: ~3 MB/day, ~100 MB/month
 - 5 GB = ~50 million ticker rows
 
 **Operation budget: 50k Class A + 50k Class B per month**
+
 - Each file upload = 1 Class A operation
 - 50k uploads = ~1,600/day = ~1 per minute
 - Using batch files (write 1 file/hour instead of 1/tick) keeps this well within limits
@@ -510,12 +513,12 @@ Lifecycle rules define automatic actions on objects when conditions are met. Rul
 buckets and apply to current and future objects. Changes to lifecycle configuration can take
 **up to 24 hours** to take effect.
 
-> Source: https://cloud.google.com/storage/docs/lifecycle
+> Source: <https://cloud.google.com/storage/docs/lifecycle>
 
 ### Actions
 
 | Action | Description |
-|--------|-------------|
+| -------- | ------------- |
 | **`Delete`** | Deletes the object (soft-deleted by default unless soft delete is disabled) |
 | **`SetStorageClass`** | Changes the object's storage class |
 | **`AbortIncompleteMultipartUpload`** | Aborts stale multipart uploads and deletes parts |
@@ -523,7 +526,7 @@ buckets and apply to current and future objects. Changes to lifecycle configurat
 ### Conditions
 
 | Condition | Description |
-|-----------|-------------|
+| ----------- | ------------- |
 | `age` | Age in days since object creation (applied at midnight UTC on the day the condition is met) |
 | `createdBefore` | Created before midnight of specified date (YYYY-MM-DD) |
 | `customTimeBefore` | Custom-Time metadata before specified date |
@@ -643,7 +646,7 @@ gsutil lifecycle get gs://my-bucket
 ### Predefined Roles
 
 | Role | Name | Permissions | Use Case |
-|------|------|-------------|----------|
+| ------ | ------ | ------------- | ---------- |
 | **Storage Admin** | `roles/storage.admin` | Full control of all buckets and objects | Administrators |
 | **Storage Object Admin** | `roles/storage.objectAdmin` | Full object CRUD (`create`, `get`, `delete`, `update`, `list`) | Application SAs |
 | **Storage Object Viewer** | `roles/storage.objectViewer` | Read objects and list objects | Read-only access |
@@ -652,7 +655,7 @@ gsutil lifecycle get gs://my-bucket
 | **Storage Legacy Object Owner** | `roles/storage.legacyObjectOwner` | Full object control (legacy ACL-based) | Migration only |
 | **Storage HMAC Key Admin** | `roles/storage.hmacKeyAdmin` | Manage HMAC keys | Key management |
 
-> Source: https://cloud.google.com/storage/docs/access-control/iam-roles
+> Source: <https://cloud.google.com/storage/docs/access-control/iam-roles>
 
 ### Minimal Permissions for Cloud Run SA
 
@@ -738,7 +741,7 @@ gcloud storage buckets add-iam-policy-binding gs://my-bucket \
 As of 2020, Cloud Storage provides **strong global consistency** for all core operations:
 
 | Operation | Guarantee |
-|-----------|-----------|
+| ----------- | ----------- |
 | Object read-after-write | Immediate — no 404 after successful write |
 | Object read-after-delete | Immediate — 404 immediately after deletion |
 | Object read-after-metadata-update | Immediate — no stale metadata |
@@ -749,7 +752,7 @@ As of 2020, Cloud Storage provides **strong global consistency** for all core op
 ### Eventually Consistent Operations
 
 | Operation | Propagation Delay |
-|-----------|------------------|
+| ----------- | ------------------ |
 | IAM policy changes (grant/revoke access) | ~1 minute (up to several minutes) |
 | Bucket recreation after deletion | Several minutes |
 | HMAC key state changes | Up to 3 minutes |
@@ -766,7 +769,7 @@ As of 2020, Cloud Storage provides **strong global consistency** for all core op
   never become visible
 - Batch requests are **not atomic** — some operations can succeed while others fail
 
-> Source: https://cloud.google.com/storage/docs/consistency
+> Source: <https://cloud.google.com/storage/docs/consistency>
 
 ---
 
@@ -777,7 +780,7 @@ As of 2020, Cloud Storage provides **strong global consistency** for all core op
 Cloud Storage scales automatically. General rate guidelines:
 
 | Operation Type | Sustained Rate |
-|----------------|---------------|
+| ---------------- | --------------- |
 | Read (GET) | 5,000 req/s per prefix |
 | Write (PUT/POST) | 1,000 req/s per prefix |
 | List | Same as read rate |
@@ -787,7 +790,7 @@ Cloud Storage scales automatically. General rate guidelines:
 ### Latency Characteristics
 
 | Operation | Typical Latency |
-|-----------|-----------------|
+| ----------- | ----------------- |
 | Small object read (< 1 MB) | 5-20 ms (same region) |
 | Large object read (1 MB+) | 50-200 ms + bandwidth time |
 | Object write | 10-50 ms + upload time |
@@ -798,7 +801,7 @@ Cloud Storage scales automatically. General rate guidelines:
 File caching in gcsfuse significantly improves read performance by storing object content locally:
 
 | Cache Setting | Description | Default | Recommendation |
-|---------------|-------------|---------|----------------|
+| --------------- | ------------- | --------- | ---------------- |
 | `--file-cache-dir` | Local directory for cache | (disabled) | `/tmp/gcsfuse_cache` or a persistent volume |
 | `--file-cache-max-size-mb` | Max cache size in MB | -1 (unlimited) | 1024 (1 GB) |
 | `--cache-file-for-range-read` | Cache files opened with range reads | `false` | `true` for random-access workloads |
@@ -808,7 +811,7 @@ File caching in gcsfuse significantly improves read performance by storing objec
 ### Parallel Uploads & Downloads
 
 | Strategy | Recommended Tool | Benefit |
-|----------|------------------|---------|
+| ---------- | ------------------ | --------- |
 | Parallel composite uploads | `gcloud storage cp` (auto) | Faster large file uploads |
 | Sliced object downloads | `gcloud storage cp` (auto) | Faster large file downloads |
 | gcsfuse parallel downloads | gcsfuse config | Faster read of large files via FUSE |
@@ -817,7 +820,7 @@ File caching in gcsfuse significantly improves read performance by storing objec
 ### Performance Summary
 
 | Factor | Characteristic |
-|--------|---------------|
+| -------- | --------------- |
 | **Read latency** | Higher than local FS (network round-trip). Mitigated by file caching. |
 | **Write latency** | Depends on object size. Small writes buffered by gcsfuse, flushed on close. |
 | **Throughput** | Scales with parallel operations. Can saturate network bandwidth. |
@@ -842,7 +845,7 @@ objects.
 - **Supported architectures:** x86_64, ARM64
 - **Validated ML frameworks:** TensorFlow 1.x/2.x, PyTorch 1.x/2.x, JAX 0.4.x
 
-> Source: https://cloud.google.com/storage/docs/cloud-storage-fuse/overview
+> Source: <https://cloud.google.com/storage/docs/cloud-storage-fuse/overview>
 
 ### gcsfuse Installation
 
@@ -918,7 +921,7 @@ umount /mnt/data           # Alternative
 ### gcsfuse Mounting Options
 
 | Option | Description | Default |
-|--------|-------------|---------|
+| -------- | ------------- | --------- |
 | `--implicit-dirs` | Infer implicitly-defined directories (required for flat namespace) | `false` |
 | `--only-dir` | Mount only a specific directory within the bucket | (none) |
 | `--file-cache-dir` | Local directory for file cache | (none — disabled) |
@@ -936,7 +939,7 @@ umount /mnt/data           # Alternative
 ### gcsfuse Caching
 
 | Cache Type | What it Caches | Benefit |
-|------------|----------------|---------|
+| ------------ | ---------------- | --------- |
 | **File cache** | Object content on local disk | Faster reads, reduced network cost |
 | **Stat cache** | File metadata (size, mtime) | Faster `ls`, `stat`, reduced API calls |
 | **List cache** | Directory listings | Faster `ls` on directories |
@@ -976,7 +979,7 @@ gcsfuse --config-file=gcsfuse-config.yaml my-bucket /mnt/data
 ### gcsfuse Performance Characteristics
 
 | Factor | Characteristic |
-|--------|---------------|
+| -------- | --------------- |
 | **Read latency** | Higher than local FS (network round-trip). Mitigated by file caching. |
 | **Write latency** | Depends on object size. Small writes are buffered, flushed on file close. |
 | **Throughput** | Scales with parallel operations. Can saturate network bandwidth. |
@@ -987,7 +990,7 @@ gcsfuse --config-file=gcsfuse-config.yaml my-bucket /mnt/data
 ### gcsfuse Known Limitations
 
 | Limitation | Detail |
-|------------|--------|
+| ------------ | -------- |
 | **No POSIX locks** | `flock()`, `fcntl()` locks not supported |
 | **No hard links** | Object storage doesn't support hard links |
 | **No append mode** | `O_APPEND` not supported; must rewrite entire object |
@@ -1068,7 +1071,7 @@ spec:
 ### Cloud Run Mount Options
 
 | Option | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `implicit-dirs` | Enable for flat namespace buckets (no hierarchical namespace) |
 | `file-cache-max-size-mb` | Local file cache size in MB per instance |
 | `stat-cache-ttl` | Stat cache TTL (e.g., `60s`) |
@@ -1256,7 +1259,7 @@ gs://crypto-radar-ticker-data/
 ### Crypto Recommendations
 
 | Concern | Recommendation |
-|---------|---------------|
+| --------- | --------------- |
 | **Bucket location** | Same region as compute (`us-central1` for Cloud Run in us-central1) |
 | **Storage class** | Standard for writes/latest; lifecycle → Nearline → Coldline for aging |
 | **File format** | CSV with headers for ticker data; Gzip for archives |
@@ -1304,7 +1307,7 @@ gs://crypto-radar-ticker-data/
 ### Crypto Performance Considerations
 
 | Scenario | Approach |
-|----------|----------|
+| ---------- | ---------- |
 | **Appending new ticks** | Write new files per batch (e.g., every 5-15 min), not per tick |
 | **Querying recent data** | Use gcsfuse with file caching for `latest/` and recent `raw/` prefixes |
 | **Historical queries** | Use `gcloud storage cp` directly for bulk downloads (bypasses FUSE overhead) |
@@ -1389,29 +1392,29 @@ def list_ticker_files(symbol: str, year: str, month: str) -> list[str]:
 ## References
 
 | Resource | URL |
-|----------|-----|
-| Cloud Storage Documentation | https://cloud.google.com/storage/docs |
-| Product Overview | https://cloud.google.com/storage/docs/introduction |
-| Creating Buckets | https://cloud.google.com/storage/docs/creating-buckets |
-| Bucket Locations | https://cloud.google.com/storage/docs/locations |
-| Storage Classes | https://cloud.google.com/storage/docs/storage-classes |
-| Uniform Bucket-Level Access | https://cloud.google.com/storage/docs/uniform-bucket-level-access |
-| Object Lifecycle Management | https://cloud.google.com/storage/docs/lifecycle |
-| Lifecycle Configuration Examples | https://cloud.google.com/storage/docs/lifecycle-configurations |
-| IAM for Cloud Storage | https://cloud.google.com/storage/docs/access-control/iam |
-| IAM Roles for Cloud Storage | https://cloud.google.com/storage/docs/access-control/iam-roles |
-| Cloud Storage Consistency | https://cloud.google.com/storage/docs/consistency |
-| Request Rate & Performance | https://cloud.google.com/storage/docs/request-rate |
-| Cloud Storage FUSE Overview | https://cloud.google.com/storage/docs/cloud-storage-fuse/overview |
-| Install Cloud Storage FUSE | https://cloud.google.com/storage/docs/cloud-storage-fuse/install |
-| Mount Buckets with gcsfuse | https://cloud.google.com/storage/docs/cloud-storage-fuse/mount-bucket |
-| gcsfuse Caching | https://cloud.google.com/storage/docs/cloud-storage-fuse/caching |
-| gcsfuse Performance | https://cloud.google.com/storage/docs/cloud-storage-fuse/performance |
-| gcsfuse GitHub | https://github.com/GoogleCloudPlatform/gcsfuse |
-| Cloud Storage Pricing | https://cloud.google.com/storage/pricing |
-| GCP Free Tier | https://cloud.google.com/free/docs/gcp-free-tier |
-| Pricing Calculator | https://cloud.google.com/products/calculator |
-| gcloud Storage CLI | https://cloud.google.com/sdk/gcloud/reference/storage |
-| gsutil Tool | https://cloud.google.com/storage/docs/gsutil |
-| Cloud Run + GCS Volumes | https://cloud.google.com/run/docs |
-| Terraform google_storage_bucket | https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket |
+| ---------- | ----- |
+| Cloud Storage Documentation | <https://cloud.google.com/storage/docs> |
+| Product Overview | <https://cloud.google.com/storage/docs/introduction> |
+| Creating Buckets | <https://cloud.google.com/storage/docs/creating-buckets> |
+| Bucket Locations | <https://cloud.google.com/storage/docs/locations> |
+| Storage Classes | <https://cloud.google.com/storage/docs/storage-classes> |
+| Uniform Bucket-Level Access | <https://cloud.google.com/storage/docs/uniform-bucket-level-access> |
+| Object Lifecycle Management | <https://cloud.google.com/storage/docs/lifecycle> |
+| Lifecycle Configuration Examples | <https://cloud.google.com/storage/docs/lifecycle-configurations> |
+| IAM for Cloud Storage | <https://cloud.google.com/storage/docs/access-control/iam> |
+| IAM Roles for Cloud Storage | <https://cloud.google.com/storage/docs/access-control/iam-roles> |
+| Cloud Storage Consistency | <https://cloud.google.com/storage/docs/consistency> |
+| Request Rate & Performance | <https://cloud.google.com/storage/docs/request-rate> |
+| Cloud Storage FUSE Overview | <https://cloud.google.com/storage/docs/cloud-storage-fuse/overview> |
+| Install Cloud Storage FUSE | <https://cloud.google.com/storage/docs/cloud-storage-fuse/install> |
+| Mount Buckets with gcsfuse | <https://cloud.google.com/storage/docs/cloud-storage-fuse/mount-bucket> |
+| gcsfuse Caching | <https://cloud.google.com/storage/docs/cloud-storage-fuse/caching> |
+| gcsfuse Performance | <https://cloud.google.com/storage/docs/cloud-storage-fuse/performance> |
+| gcsfuse GitHub | <https://github.com/GoogleCloudPlatform/gcsfuse> |
+| Cloud Storage Pricing | <https://cloud.google.com/storage/pricing> |
+| GCP Free Tier | <https://cloud.google.com/free/docs/gcp-free-tier> |
+| Pricing Calculator | <https://cloud.google.com/products/calculator> |
+| gcloud Storage CLI | <https://cloud.google.com/sdk/gcloud/reference/storage> |
+| gsutil Tool | <https://cloud.google.com/storage/docs/gsutil> |
+| Cloud Run + GCS Volumes | <https://cloud.google.com/run/docs> |
+| Terraform google_storage_bucket | <https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/storage_bucket> |

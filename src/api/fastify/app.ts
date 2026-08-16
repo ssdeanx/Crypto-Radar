@@ -31,6 +31,7 @@ import { authRoutes } from './routes/auth.js';
 import { mlRoutes } from './routes/ml.js';
 import { portfolioRoutes } from './routes/portfolio.js';
 import { restRoutes } from './routes/rest.js';
+import { chartRoutes } from './routes/chart.js';
 import { cronRoutes } from './routes/cron.js';
 import { taskRoutes } from './routes/tasks.js';
 import { actionRoutes } from './routes/actions.js';
@@ -237,6 +238,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
 
   // ── Route plugins ──
   await app.register(restRoutes);                                    // Existing REST API routes (ported)
+  await app.register(chartRoutes);                                   // Matplotlib visual charting routes
   await app.register(authRoutes, { prefix: '/api/auth' });          // Auth routes (login, signup, me)
   await app.register(portfolioRoutes, { prefix: '/api/portfolio' }); // Portfolio routes (trade, history)
   await app.register(mlRoutes);                                      // ML pipeline routes

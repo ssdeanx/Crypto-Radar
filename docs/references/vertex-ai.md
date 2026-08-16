@@ -48,7 +48,7 @@ Managed datasets provide source data for training AutoML and custom models. A ma
 ### Data Types Supported
 
 | Data Type | AutoML Support | Custom Training |
-|-----------|----------------|-----------------|
+| ----------- | ---------------- | ----------------- |
 | Image (classification, object detection) | Yes | Yes |
 | Tabular (classification, regression, forecasting) | Yes | Yes |
 | Text | No | Yes |
@@ -57,6 +57,7 @@ Managed datasets provide source data for training AutoML and custom models. A ma
 ### Creating a Dataset
 
 **Console:**
+
 1. Go to Gemini Enterprise Agent Platform > Datasets
 2. Click **Create**
 3. Select data type and objective
@@ -64,6 +65,7 @@ Managed datasets provide source data for training AutoML and custom models. A ma
 5. Configure data splits (for AutoML)
 
 **API (Python SDK):**
+
 ```python
 from google.cloud import aiplatform
 
@@ -75,6 +77,7 @@ dataset = aiplatform.ImageDataset.create(
 ```
 
 **Key concepts:**
+
 - Data is typically sourced from **Cloud Storage** buckets
 - Use **data splits** (training/validation/test) for AutoML models
 - **Annotation sets** label your data (for supervised learning)
@@ -110,6 +113,7 @@ dataset = aiplatform.ImageDataset.create(
 Vertex AI Experiments (now "Agent Platform Experiments") track and analyze different model architectures, hyperparameters, and training environments. It lets you track steps, inputs, outputs, metrics, and parameters of ML training runs.
 
 **Key features:**
+
 - Track **parameters** and **metrics** across experiment runs
 - Compare model performance across multiple architectures
 - Search experiments via console or Python SDK
@@ -120,7 +124,7 @@ Vertex AI Experiments (now "Agent Platform Experiments") track and analyze diffe
 ### Core Concepts
 
 | Term | Definition |
-|------|------------|
+| ------ | ------------ |
 | **Experiment** | A collection of related runs (e.g., "hyperparameter-tuning-v2") |
 | **Experiment Run** | A single training attempt with a set of parameters and resulting metrics |
 | **Pipeline Run** | A pipeline execution tracked as part of an experiment |
@@ -177,6 +181,7 @@ with aiplatform.start_run(run="run-1") as my_run:
 ### Data Models
 
 Experiments follow the **ML Metadata** schema:
+
 - An `Experiment` contains multiple `ExperimentRun`s
 - Each `ExperimentRun` has `parameters`, `summary metrics`, `time series metrics`
 - Linked to `Artifact`s (models, datasets) and `Execution`s (pipeline steps)
@@ -199,8 +204,9 @@ The Gemini API on Vertex AI provides access to Google's most capable generative 
 ### Available Models
 
 #### Gemini 3 Family (Latest)
+
 | Model | Description |
-|-------|-------------|
+| ------- | ------------- |
 | **Gemini 3.1 Pro Preview** | Most capable Gemini model; 2M token context; reasoning, multimodal |
 | **Gemini 3.5 Flash** | Fast, cost-effective; multimodal; 1M token context |
 | **Gemini 3 Flash Preview** | Budget-friendly; text/image/video input; 1M token context |
@@ -208,18 +214,21 @@ The Gemini API on Vertex AI provides access to Google's most capable generative 
 | **Gemini 3.1 Flash Image / Lite Image** | Image generation-capable variants |
 
 #### Gemini Omni
+
 | Model | Description |
 |-------|-------------|
 | **Gemini Omni Flash** | Multimodal with video output capability; text/image/video/audio input |
 
 #### Gemini 2.5 Family
+
 | Model | Description |
-|-------|-------------|
+| ------- | ------------- |
 | **Gemini 2.5 Pro** | Strong reasoning and coding; 1M token context |
 | **Gemini 2.5 Flash** | Fast, cost-effective reasoning |
 | **Gemini 2.5 Flash-Lite** | Lowest cost in 2.5 family |
 
 #### Gemini 2.0 Family
+
 | Model | Description |
 |-------|-------------|
 | **Gemini 2.0 Flash** | Fast performance for everyday tasks |
@@ -228,6 +237,7 @@ The Gemini API on Vertex AI provides access to Google's most capable generative 
 ### Accessing Gemini on Vertex AI
 
 **Via the Gen AI SDK (`@google/genai`):**
+
 ```typescript
 import { GoogleGenAI } from '@google/genai';
 
@@ -244,6 +254,7 @@ const response = await ai.models.generateContent({
 ```
 
 **Via the `@google-cloud/agentplatform` SDK:**
+
 ```typescript
 import { Client } from '@google-cloud/agentplatform';
 
@@ -254,6 +265,7 @@ const client = new Client({
 ```
 
 **Via OpenAI-compatible libraries:**
+
 - Access Gemini models using OpenAI client SDKs by pointing to the Agent Platform endpoint
 - See: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/openai>
 
@@ -377,7 +389,7 @@ BigQuery ML (BQML) lets you create, train, and deploy ML models using **standard
 ### Supported Model Types
 
 | Model Type | SQL Syntax |
-|------------|------------|
+| ------------ | ------------ |
 | Linear regression | `CREATE MODEL ... OPTIONS(model_type='linear_reg')` |
 | Logistic regression | `CREATE MODEL ... OPTIONS(model_type='logistic_reg')` |
 | Boosted tree (XGBoost) | `CREATE MODEL ... OPTIONS(model_type='boosted_tree_classifier')` |
@@ -505,7 +517,7 @@ const response = await genai.models.generateContent({
 ### Google Cloud Free Trial
 
 | Offer | Details |
-|-------|---------|
+| ------- | --------- |
 | **$300 Welcome Credit** | Free for 90 days for new customers |
 | **Free Trial** | 90-day program, no automatic billing |
 | **20+ Free Tier products** | Monthly usage allowances that never expire |
@@ -513,7 +525,7 @@ const response = await genai.models.generateContent({
 ### Free Tier Products (Relevant to Vertex AI)
 
 | Product | Free Tier Limit |
-|---------|----------------|
+| --------- | ---------------- |
 | **BigQuery** | 1 TB of queries per month |
 | **Cloud Storage** | 5 GB-months of Standard Storage |
 | **Cloud Run** | 2 million requests per month |
@@ -530,7 +542,7 @@ const response = await genai.models.generateContent({
 **Gemini 3 Family** (per 1M tokens):
 
 | Model | Input (≤200K) | Input (>200K) | Output | Cached Input |
-|-------|--------------|---------------|--------|-------------|
+| ------- | -------------- | --------------- | -------- | ------------- |
 | **Gemini 3.1 Pro Preview** | $2.00 | $4.00 | $12.00 | $0.20 |
 | **Gemini 3.5 Flash** | $1.50 | $1.50 | $9.00 | $0.15 |
 | **Gemini 3 Flash Preview** | $0.50 | $0.50 | $3.00 | $0.05 |
@@ -539,6 +551,7 @@ const response = await genai.models.generateContent({
 | **Gemini 3.1 Flash Image** | $0.50 | N/A | $3.00 | N/A |
 
 **Gemini Omni**:
+
 | Model | Input | Text Output | Video Output |
 |-------|-------|-------------|-------------|
 | **Gemini Omni Flash** | $1.50/1M | $9.00/1M | $0.10/s |
@@ -566,6 +579,7 @@ const response = await genai.models.generateContent({
 ## Links & References
 
 ### Official Documentation
+
 - Platform overview: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning>
 - Datasets: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/datasets/overview>
 - Experiments: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/experiments/intro-vertex-ai-experiments>
@@ -576,6 +590,7 @@ const response = await genai.models.generateContent({
 - Pricing (ML Platform): <https://cloud.google.com/products/gemini-enterprise-agent-platform/pricing>
 
 ### SDK & Libraries
+
 - npm: `@google-cloud/agentplatform` — <https://www.npmjs.com/package/@google-cloud/agentplatform>
 - npm: `@google-cloud/vertexai` (deprecated) — <https://www.npmjs.com/package/@google-cloud/vertexai>
 - npm: `@google/genai` — Gen AI SDK for Node.js
@@ -583,6 +598,7 @@ const response = await genai.models.generateContent({
 - Python: `google-cloud-aiplatform` — <https://pypi.org/project/google-cloud-aiplatform/>
 
 ### Quickstarts
+
 - Get started with Gemini 3: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/gemini-3>
 - Gen AI SDK: <https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/genai-sdk>
 - Node.js quickstart: <https://github.com/googleapis/nodejs-agentplatform>

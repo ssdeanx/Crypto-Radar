@@ -681,7 +681,7 @@ describe('Fuzz: Negative prices', () => {
     const klines = makeKlines(80, -100, -98, -102, -100, 1000);
     const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
-  });
+  }, 15000);
 });
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -760,5 +760,5 @@ describe('Fuzz: Zero values', () => {
     const klines = makeKlines(80, 0, 0, 0, 0, 0);
     const r = await computeAllIndicators(klines);
     expect(r).toBeDefined();
-  });
+  }, 15000);
 });

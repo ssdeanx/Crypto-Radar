@@ -1,7 +1,7 @@
 # Google Artifact Registry — Reference
 
-> **Last updated:** 2026-07-19  
-> **Source:** [Official GCP Documentation](https://cloud.google.com/artifact-registry/docs)  
+> **Last updated:** 2026-07-19
+> **Source:** [Official GCP Documentation](https://cloud.google.com/artifact-registry/docs)
 > **Use case:** Docker image repository for Cloud Run deployments in the Crypto Radar project
 
 ---
@@ -28,12 +28,14 @@
 [Artifact Registry](https://cloud.google.com/artifact-registry/docs) is Google Cloud's universal package manager for build artifacts and dependencies. It supersedes the deprecated Container Registry (gcr.io).
 
 **Supported artifact formats:**
+
 - Docker container images (primary use for Crypto Radar)
 - Helm charts
 - Language packages: Go, Java (Maven), Node.js (npm), Python, Ruby
 - OS packages: Debian, RPM
 
 **Repository modes:**
+
 - **Standard** — stores artifacts in the project (default, used by Crypto Radar)
 - **Remote** — acts as a proxy/cache for an upstream registry (e.g., Docker Hub)
 - **Virtual** — combines multiple upstream repositories into a single endpoint
@@ -49,7 +51,7 @@ The Crypto Radar Docker image (~200 MB compressed) is stored in Artifact Registr
 ### Free Tier
 
 | Tier | Limit | Cost |
-|------|-------|------|
+| ------ | ------- | ------ |
 | Storage | 0 – 0.5 GB-month per billing account | **Free** |
 | Data transfer within same GCP location | Unlimited | **Free** |
 | Data transfer same continent (region ↔ multi-region) | Unlimited | **Free** |
@@ -59,7 +61,7 @@ The Crypto Radar Docker image (~200 MB compressed) is stored in Artifact Registr
 ### Paid Tier
 
 | Item | Price |
-|------|-------|
+| ------ | ------- |
 | Storage (above 0.5 GB-month) | $0.10/GB/month |
 | Egress — US ↔ Canada (same continent) | $0.01/GB |
 | Egress — Europe (same continent) | $0.02/GB |
@@ -139,6 +141,7 @@ gcloud auth configure-docker us-central1-docker.pkg.dev
 ```
 
 This updates `~/.docker/config.json` with the credential helper entry:
+
 ```json
 {
   "credHelpers": {
@@ -188,7 +191,7 @@ LOCATION-docker.pkg.dev/PROJECT_ID/REPOSITORY/IMAGE:TAG
 ```
 
 | Part | Example | Description |
-|------|---------|-------------|
+| ------ | --------- | ------------- |
 | `LOCATION` | `us-west1` | Regional or multi-regional location |
 | `PROJECT_ID` | `crypto-radar-457010` | GCP project ID |
 | `REPOSITORY` | `crypto-radar` | Repository name |
@@ -243,6 +246,7 @@ gcloud artifacts docker images list \
 ```
 
 Output:
+
 ```
 IMAGE                                                              DIGEST        CREATE_TIME           UPDATE_TIME
 us-west1-docker.pkg.dev/.../crypto-radar/api  sha256:85f...  2026-07-19T15:08:45  2026-07-19T15:08:45
@@ -318,7 +322,7 @@ images:
 ### Cloud Build Substitutions
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `$PROJECT_ID` | Current GCP project ID |
 | `$COMMIT_SHA` | Git commit SHA (from trigger) |
 | `$BRANCH_NAME` | Git branch name |
@@ -330,7 +334,7 @@ images:
 The Cloud Build service account (`PROJECT_NUMBER@cloudbuild.gserviceaccount.com`) needs Artifact Registry permissions (granted via the `roles/cloudbuild.builds.builder` role by default):
 
 | Permission | Purpose |
-|------------|---------|
+| ------------ | --------- |
 | `artifactregistry.repositories.uploadArtifacts` | Push images to repositories |
 | `artifactregistry.repositories.downloadArtifacts` | Pull images from repositories |
 | `artifactregistry.dockerimages.get` | Get Docker image metadata |
@@ -350,7 +354,7 @@ Add `roles/run.admin` and `roles/iam.serviceAccountUser` to the Cloud Build SA.
 ### Predefined Roles
 
 | Role | Description | Use Case |
-|------|-------------|----------|
+| ------ | ------------- | ---------- |
 | `roles/artifactregistry.reader` | View and get artifacts, view repository metadata | CI/CD pull, read-only access |
 | `roles/artifactregistry.writer` | Read and write artifacts | Cloud Build SA pushing images |
 | `roles/artifactregistry.repoAdmin` | Read, write, and delete artifacts | Manual cleanup, manual pushes |
@@ -435,7 +439,7 @@ gcloud run deploy crypto-radar \
 ### Tag Convention for Crypto Radar
 
 | Tag | Purpose | Mutability |
-|-----|---------|------------|
+| ----- | --------- | ------------ |
 | `latest` | Current deployment | Mutable |
 | `sha-<7-char-commit>` | Specific build (rollback target) | Immutable |
 | `v<major>.<minor>.<patch>` | Release version (optional) | Usually immutable |
@@ -449,7 +453,7 @@ Cleanup policies automatically delete old images to save storage costs. Policies
 ### Policy Types
 
 | Policy | Action | Description |
-|--------|--------|-------------|
+| -------- | -------- | ------------- |
 | **Delete** | Delete artifacts that match conditions | Free up storage |
 | **Keep (conditional)** | Retain artifacts matching conditions (overrides delete) | Protect specific versions |
 | **Keep (most recent N)** | Retain the N most recent versions | Keep deployment history |

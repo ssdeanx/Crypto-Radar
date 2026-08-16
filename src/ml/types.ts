@@ -27,6 +27,17 @@ export interface LabelRow {
   label_direction_60: -1 | 0 | 1 | null;
   /** Tri-class label at the configured horizon */
   label_class: -1 | 0 | 1 | null;
+  /** Option A: Triple-Barrier label (+1 for TP hit, -1 for SL hit, 0 for vertical timeout) */
+  label_barrier_hit?: -1 | 0 | 1 | null;
+  /** Option A: Realized Risk-Reward payoff multiple (e.g. +2.0 or -1.0) */
+  label_r_multiple?: number | null;
+  /** Option A: Alpha relative to BTC over the same period */
+  alpha_vs_btc?: number | null;
+  /** Multi-horizon returns */
+  ret_15m?: number | null;
+  ret_1h?: number | null;
+  ret_4h?: number | null;
+  ret_24h?: number | null;
 }
 
 /** ML pipeline configuration */

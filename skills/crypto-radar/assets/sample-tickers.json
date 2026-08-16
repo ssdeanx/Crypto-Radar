@@ -1,0 +1,35 @@
+[
+  {
+    "symbol": "SOL",
+    "pair": "SOLUSDT",
+    "chain": "solana",
+    "price": 154.20,
+    "change_24h": 4.12,
+    "high_24h": 158.40,
+    "low_24h": 149.80,
+    "volume_24h": 85402100.50,
+    "timestamp": 1723731600000
+  },
+  {
+    "symbol": "BTC",
+    "pair": "BTCUSDT",
+    "chain": "multi",
+    "price": 63020.00,
+    "change_24h": 0.71,
+    "high_24h": 63800.00,
+    "low_24h": 62400.00,
+    "volume_24h": 504830000.00,
+    "timestamp": 1723731600000
+  },
+  {
+    "symbol": "ETH",
+    "pair": "ETHUSDT",
+    "chain": "multi",
+    "price": 1882.24,
+    "change_24h": 0.96,
+    "high_24h": 1910.00,
+    "low_24h": 1860.00,
+    "volume_24h": 132070000.00,
+    "timestamp": 1723731600000
+  }
+]

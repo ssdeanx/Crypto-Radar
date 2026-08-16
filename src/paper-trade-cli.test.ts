@@ -879,6 +879,37 @@ describe('export-dataset command', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// eval command
+// ═══════════════════════════════════════════════════════════════════════
+
+describe('eval command', () => {
+  beforeEach(() => resetMocks());
+
+  it('evaluates trading performance and displays scorecard', async () => {
+    m.profile = 'active-agent';
+    m.trades = [
+      { id: '1', type: 'buy', symbol: 'SOL', amount: 10, price: 100, total: 1000, timestamp: '2026-08-15T00:00:00Z' },
+      { id: '2', type: 'sell', symbol: 'SOL', amount: 10, price: 110, total: 1100, pnl: 100, fee: 1.0, timestamp: '2026-08-15T01:00:00Z' },
+    ];
+
+    const { output, exitCode } = await runCommand(['eval']);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('Trading Agent Performance Scorecard');
+    expect(output).toContain('Win Rate:');
+    expect(output).toContain('Sharpe Ratio:');
+  });
+
+  it('outputs raw JSON when --json flag is provided', async () => {
+    m.profile = 'active-agent';
+    m.trades = [];
+
+    const { output, exitCode } = await runCommand(['eval', '--json']);
+    expect(exitCode).toBe(0);
+    expect(output).toContain('"totalTrades": 0');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // profile create sub-command
 // ═══════════════════════════════════════════════════════════════════════
 

@@ -1,32 +1,32 @@
 [
   {
-    "id": "GOAL-01",
-    "description": "Institutional Signal Strategy Engine Enhancements",
+    "id": "goal-1",
+    "description": "Perform full trace across TypeScript and Python files, fix code smells, eliminate remaining legacy naming, and ensure 10/10 code quality",
     "status": "completed",
-    "verification": "Strategies in src/analysis/strategies.ts updated with ADX trend filter, divergence detection, volume surge multipliers, and multi-timeframe consensus scoring."
+    "verificationCriteria": "100% test passing, 0 TypeScript compile errors, 0 linter errors, and verified code alignment"
   },
   {
-    "id": "GOAL-02",
-    "description": "High-Precision ML Model Prediction & Calibration",
+    "id": "goal-2",
+    "description": "Update CHANGELOG.md with all new quantitative math, agent evaluation, Promptfoo red-teaming, and paper agent ML additions",
     "status": "completed",
-    "verification": "CatBoost classifier model predictions in src/ml/predict.ts calibrated with probability bounds and feature attribution."
+    "verificationCriteria": "CHANGELOG.md documents all recent features, architectural upgrades, and version releases"
   },
   {
-    "id": "GOAL-03",
-    "description": "Rich Visual Report & Terminal Display Output Quality",
+    "id": "goal-3",
+    "description": "Perform major synchronization and update of README.md, SPEC.md, and both SKILL.md files (root & skills/crypto-radar/SKILL.md)",
     "status": "completed",
-    "verification": "Markdown, ASCII chart, and terminal displays in src/output.ts & src/signals.ts enriched with risk-reward, pattern, and support/resistance metrics."
+    "verificationCriteria": "README.md, SPEC.md, and SKILL.md accurately reflect all 149 tokens, 26 indicators, MathJS modules, Promptfoo suites, and tool APIs"
   },
   {
-    "id": "GOAL-04",
-    "description": "Automated Backtesting & Performance Analytics",
+    "id": "goal-4",
+    "description": "Complete reference documentation in docs/references/ with comprehensive guides for all subsystems",
     "status": "completed",
-    "verification": "Backtesting engine in src/backtest.ts outputs Sharpe Ratio, Sortino Ratio, Max Drawdown, and Win Rate metrics."
+    "verificationCriteria": "docs/references contains complete guides for math-engine, ml-pipeline, signal-engine, paper-trading, api-daemon-ws, and eval-benchmarks"
   },
   {
-    "id": "GOAL-05",
-    "description": "System End-to-End Quality & Test Suite Validation",
+    "id": "goal-5",
+    "description": "Execute end-to-end test verification and run live CLI scan of market tokens",
     "status": "completed",
-    "verification": "npm run validate and npm run backtest pass 100% cleanly."
+    "verificationCriteria": "Full test suites pass and CLI token scan executes live against live markets successfully"
   }
 ]

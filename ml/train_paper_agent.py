@@ -1,5 +1,5 @@
 """
-Hermes Crypto Radar — Paper Trading AI Agent Training Pipeline
+Crypto-Radar — Paper Trading AI Agent Training Pipeline
 
 Trains machine learning models (CatBoost / LightGBM / Scikit-Learn) directly on
 exported paper trading telemetry datasets to learn optimal signal weighting,
@@ -123,11 +123,13 @@ def train_model(
 
     # Compute evaluation metrics
     acc = float(np.mean(preds == y_test)) if len(y_test) > 0 else 0.0
+    brier = float(np.mean((proba - y_test) ** 2)) if len(y_test) > 0 and len(proba) == len(y_test) else 0.25
 
     return {
         "train_samples": len(X_train),
         "test_samples": len(X_test),
         "test_accuracy": round(acc, 4),
+        "brier_score": round(brier, 4),
         "feature_importances": sorted(
             feature_importances.items(), key=lambda x: x[1], reverse=True
         ),

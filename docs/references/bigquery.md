@@ -1,7 +1,7 @@
 # Google BigQuery Reference
 
-> **Source**: https://cloud.google.com/bigquery/docs  
-> **Last Updated**: July 2026  
+> **Source**: <https://cloud.google.com/bigquery/docs>
+> **Last Updated**: July 2026
 > **Package**: `@google-cloud/bigquery` (Node.js), `google-cloud-bigquery` (Python)
 
 ---
@@ -66,6 +66,7 @@ BigQuery's architecture has two independent layers connected by Google's petabit
 This decoupling allows each layer to dynamically allocate resources without impacting the other, enabling maintenance and upgrades without downtime.
 
 **Interfaces:**
+
 - Google Cloud Console (web UI)
 - `bq` command-line tool
 - Client libraries: Python, Java, Node.js, Go, C#, Ruby, PHP
@@ -85,6 +86,7 @@ This decoupling allows each layer to dynamically allocate resources without impa
 | 1 TiB+ | **$6.25 per TiB** (tebibyte) processed |
 
 **Details:**
+
 - Charged for data scanned, not data returned
 - Minimum 10 MB processed per table referenced, minimum 10 MB per query
 - Charges rounded up to the nearest MB
@@ -95,7 +97,7 @@ This decoupling allows each layer to dynamically allocate resources without impa
 ### Storage Pricing
 
 | Storage Type | Price | Free Tier |
-|-------------|-------|-----------|
+| ------------- | ------- | ----------- |
 | Active storage | ~$0.02/GB per month | First 10 GB **free** per month |
 | Long-term storage (90+ days without modification) | ~$0.01/GB per month | Included in free tier |
 
@@ -109,7 +111,7 @@ This decoupling allows each layer to dynamically allocate resources without impa
 ### Free Usage Tier Summary
 
 | Resource | Free Monthly Allowance |
-|----------|----------------------|
+| ---------- | ---------------------- |
 | **Query processing** | 1 TiB of query data per month |
 | **Storage** | 10 GB of storage per month |
 | **Streaming inserts** | 2 TB per month (with billing account) |
@@ -119,6 +121,7 @@ This decoupling allows each layer to dynamically allocate resources without impa
 ### Capacity Pricing (Editions)
 
 For high-volume users, BigQuery offers slot-based reservations in three editions:
+
 - **Standard**: Baseline query processing
 - **Enterprise**: Higher per-slot performance, additional features
 - **Enterprise Plus**: Maximum performance, all features
@@ -159,6 +162,7 @@ CREATE TABLE IF NOT EXISTS crypto_radar.ticker_data (
 ```
 
 **Table types:**
+
 - **Native (managed) tables**: Stored in BigQuery's internal columnar storage
 - **External tables**: Query data from Cloud Storage, Bigtable, Google Sheets, etc.
 - **Views**: Logical/saved queries (can be authorized)
@@ -174,7 +178,7 @@ CREATE TABLE IF NOT EXISTS crypto_radar.ticker_data (
 ### Types of Partitioning
 
 | Type | Description | Example |
-|------|-------------|---------|
+| ------ | ------------- | --------- |
 | **Time-unit column** | Partition on a `DATE`, `TIMESTAMP`, or `DATETIME` column | `PARTITION BY DATE(timestamp)` |
 | **Ingestion time** | Partition based on when data was loaded (`_PARTITIONTIME`) | `PARTITION BY _PARTITIONDATE` |
 | **Integer range** | Partition on an integer column by range | `PARTITION BY RANGE_BUCKET(signal_id, GENERATE_ARRAY(0, 100000, 1000))` |
@@ -204,6 +208,7 @@ OPTIONS (
 ```
 
 **Partition limits:**
+
 - Max 1,000,000 partitions per table (1 partition per day ≈ 2,739 years)
 - Partition filter required in queries for large tables to avoid full scan
 
@@ -234,7 +239,7 @@ OPTIONS (
 ### Clustering rules
 
 | Property | Detail |
-|----------|--------|
+| ---------- | -------- |
 | Max columns | 4 cluster columns |
 | Column order matters | Leading column gets most pruning benefit |
 | Types supported | `DATE`, `TIMESTAMP`, `BOOL`, `GEOGRAPHY`, `INT64`, `NUMERIC`, `FLOAT64`, `STRING` |
@@ -269,6 +274,7 @@ async function insertRow(datasetId, tableId, row) {
 ```
 
 **Limitations:**
+
 - 100,000 rows per second per table (default quota)
 - Max 10 MB per row
 - Best-effort deduplication (use `insertId` for dedup)
@@ -279,6 +285,7 @@ async function insertRow(datasetId, tableId, row) {
 Higher throughput, lower latency, exactly-once semantics via stream offsets.
 
 **Stream types:**
+
 - **Default**: High throughput, exactly-once delivery
 - **Committed**: Auto-committed, data immediately visible
 - **Pending**: Manual commit control
@@ -512,7 +519,7 @@ BigQuery ML lets you train, evaluate, and run inference on ML models using **SQL
 ### Supported Model Types
 
 | Category | Models |
-|----------|--------|
+| ---------- | -------- |
 | **Supervised** | Linear regression, logistic regression, XGBoost, random forest, deep neural network (DNN), boosted tree |
 | **Time series** | ARIMA_PLUS, ARIMA_PLUS_XREG (with external regressors), exponential smoothing |
 | **Unsupervised** | K-means clustering, PCA (dimensionality reduction), matrix factorization |
@@ -638,7 +645,7 @@ Prevents accidental full-table scans.
 ### Predefined Roles
 
 | Role | Permissions | Best For |
-|------|------------|----------|
+| ------ | ------------ | ---------- |
 | `roles/bigquery.dataViewer` | Read tables, views, datasets | Read-only analysts |
 | `roles/bigquery.dataEditor` | Read + edit data, create tables | Data engineers ingesting data |
 | `roles/bigquery.dataOwner` | Full dataset control including ACLs | Dataset administrators |
@@ -787,21 +794,21 @@ ORDER BY total_bytes_processed DESC;
 ## References
 
 | Resource | URL |
-|----------|-----|
-| BigQuery Overview | https://cloud.google.com/bigquery/docs/introduction |
-| BigQuery Pricing | https://cloud.google.com/bigquery/pricing |
-| Partitioned Tables | https://cloud.google.com/bigquery/docs/partitioned-tables |
-| Clustered Tables | https://cloud.google.com/bigquery/docs/clustered-tables |
-| Streaming Data | https://cloud.google.com/bigquery/docs/streaming-data-into-bigquery |
-| Storage Write API | https://cloud.google.com/bigquery/docs/write-api |
-| BigQuery ML Intro | https://cloud.google.com/bigquery/docs/bqml-introduction |
-| BigQuery ML Model Types | https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-create |
-| IAM Roles & Permissions | https://cloud.google.com/bigquery/docs/access-control |
-| Client Libraries | https://cloud.google.com/bigquery/docs/reference/libraries |
-| Node.js Reference | https://cloud.google.com/nodejs/docs/reference/bigquery/latest |
-| BigQuery SQL Reference | https://cloud.google.com/bigquery/docs/reference/standard-sql |
-| Free Tier | https://cloud.google.com/free |
-| BigQuery Sandbox | https://cloud.google.com/bigquery/docs/sandbox |
-| Cost Controls | https://cloud.google.com/bigquery/docs/custom-quotas |
-| Slots & Reservations | https://cloud.google.com/bigquery/docs/reservations-intro |
-| Public Datasets | https://cloud.google.com/bigquery/public-data |
+| ---------- | ----- |
+| BigQuery Overview | <https://cloud.google.com/bigquery/docs/introduction> |
+| BigQuery Pricing | <https://cloud.google.com/bigquery/pricing> |
+| Partitioned Tables | <https://cloud.google.com/bigquery/docs/partitioned-tables> |
+| Clustered Tables | <https://cloud.google.com/bigquery/docs/clustered-tables> |
+| Streaming Data | <https://cloud.google.com/bigquery/docs/streaming-data-into-bigquery> |
+| Storage Write API | <https://cloud.google.com/bigquery/docs/write-api> |
+| BigQuery ML Intro | <https://cloud.google.com/bigquery/docs/bqml-introduction> |
+| BigQuery ML Model Types | <https://cloud.google.com/bigquery/docs/reference/standard-sql/bigqueryml-syntax-create> |
+| IAM Roles & Permissions | <https://cloud.google.com/bigquery/docs/access-control> |
+| Client Libraries | <https://cloud.google.com/bigquery/docs/reference/libraries> |
+| Node.js Reference | <https://cloud.google.com/nodejs/docs/reference/bigquery/latest> |
+| BigQuery SQL Reference | <https://cloud.google.com/bigquery/docs/reference/standard-sql> |
+| Free Tier | <https://cloud.google.com/free> |
+| BigQuery Sandbox | <https://cloud.google.com/bigquery/docs/sandbox> |
+| Cost Controls | <https://cloud.google.com/bigquery/docs/custom-quotas> |
+| Slots & Reservations | <https://cloud.google.com/bigquery/docs/reservations-intro> |
+| Public Datasets | <https://cloud.google.com/bigquery/public-data> |

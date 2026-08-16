@@ -1,9 +1,39 @@
-# Changelog — 🛰️ Hermes Crypto Radar
+# Changelog — 🛰️ Crypto-Radar
 
 All notable changes to this project are documented here.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+---
+
+## [2.10.0] — 2026-08-15
+
+### Added
+
+- **Institutional Quantitative MathJS Engine (`src/math/`)**:
+  - **Markowitz Mean-Variance Portfolio Optimization (`src/math/markowitz.ts`)**: Solves analytical tangency/Sharpe maximization $w^* = \frac{\Sigma^{-1}(\mu - r_f \mathbf{1})}{\mathbf{1}^T \Sigma^{-1}(\mu - r_f \mathbf{1})}$ with Duchi probability simplex projection ($\sum w_i = 1, w_i \ge 0$) and Efficient Frontier generation.
+  - **Spectral Factor Decomposition & Eigenportfolios (`src/math/spectral.ts`)**: Decomposes covariance matrices using `math.eigs()` to extract orthogonal market risk factors, variance explained ratios, and eigenportfolio weights.
+  - **Markov Regime Transition & Stationary State Engine (`src/math/markov.ts`)**: 1st-order empirical transition matrix estimation with Laplace smoothing, regime duration persistence ($\tau_i = \frac{1}{1-P_{ii}}$), and stationary long-run probability distribution ($\pi P = \pi$) via matrix power iteration.
+  - **Non-Linear Polynomial S/R Curvature Engine (`src/math/curve-fit.ts`)**: Vandermonde design matrix regression $(X^T X)^{-1} X^T y$, $R^2$ goodness-of-fit, and 2nd derivative inflection detection for dynamic support/resistance curvature.
+  - **High-Precision Zero-Loss Financial Arithmetic (`src/math/bignum.ts`)**: Arbitrary-precision trade compounding over $N$ periods, fee stacking, and cyclic multi-hop arbitrage path yield validation using `math.bignumber`.
+  - **Quantitative Risk & Sizing Engine (`src/math/risk.ts`)**: Fractional & Half-Kelly sizing, volatility-targeted ATR dollar risk sizing, Historical and Parametric 95%/99% Value-at-Risk (VaR) and CVaR (Expected Shortfall).
+  - **Portfolio Covariance Engine (`src/math/portfolio.ts`)**: $N \times N$ sample covariance and Pearson correlation matrices, and Inverse-Volatility Risk Parity weight distribution.
+  - **Signal Filtering & Mathematical Regime Engine (`src/math/filtering.ts`)**: 1D Kalman filter state estimator for price trend velocity, Robust Z-scores via Median Absolute Deviation (MAD), and Multi-Scale Hurst Exponent ($H < 0.45$ mean-reverting vs $H > 0.55$ trending).
+  - **Quantitative Performance Metrics (`src/math/eval.ts`)**: Brier Score, Expected Calibration Error (ECE), Sharpe, Sortino, Calmar, MFE/MAE excursions, and Alpha vs BTC.
+- **Enterprise Promptfoo Evaluation Suite (`promptfooconfig.yaml` & `src/analysis/promptfoo-provider.ts`)**:
+  - Built custom TypeScript Promptfoo provider routing evaluations through native LLM inference engine with token usage accounting and fallback simulation.
+  - Configured promptfoo test matrix for structured JSON trade signals, market research rationales, programmatic JavaScript assertions, and red-teaming against prompt injections and hallucinations.
+  - Added `npm run eval:prompts` and `npm run eval:view` scripts.
+- **Paper Trading Agent ML Training Pipeline (`ml/train_paper_agent.py` & `src/analysis/agent-eval.ts`)**:
+  - Created telemetry dataset training pipeline in Python for learning signal weights and payoff curves from simulated paper trading executions.
+  - Added `evaluateAgentPerformance()` generating comprehensive agent performance scorecards (Brier score, profit factor, win rate, expectancy, MFE/MAE ratio, drawdown).
+- **Fractional Kelly Sizing in Paper Trader (`src/paper-trade.ts`)**:
+  - Integrated `computeKellyFraction` into `PaperTrader.agentPlay()` to size positions dynamically based on confidence, payoff ratio, and account cash.
+
+### Changed
+
+- Normalized all legacy headers, documentation titles, and comments across the entire codebase to **Crypto-Radar**.
 
 ---
 

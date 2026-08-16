@@ -1,0 +1,19 @@
+[
+  {
+    "symbol": "SOL",
+    "chain": "solana",
+    "price": 154.20,
+    "direction": "buy",
+    "compositeScore": 76.5,
+    "confidence": 0.82,
+    "momentumScore": 82.0,
+    "meanReversionScore": 65.0,
+    "trendFollowingScore": 78.5,
+    "divergenceScore": 85.0,
+    "adx": 28.5,
+    "rsi": 62.4,
+    "stopLoss": 145.96,
+    "takeProfit": 170.68,
+    "riskRewardRatio": 2.0
+  }
+]
